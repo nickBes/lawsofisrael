@@ -2,3 +2,7 @@
 .ipynb_checkpoints/
 models
 logs
+notebooks/cache/
+notebooks/outputs/
+.env
+__pycache__
