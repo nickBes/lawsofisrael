@@ -1,0 +1,27 @@
+[project]
+name = "lawsofisrael"
+version = "0.2.0"
+description = "Shared extraction, chunking, and LLooM setup for the Israeli passed-laws concept-discovery pipeline."
+requires-python = ">=3.10"
+# Runtime dependencies are managed by the project's existing virtualenv; only
+# the shared package's direct imports are declared here so the package is
+# self-describing. Heavy optional deps (docling, text_lloom) are imported lazily
+# inside functions so the package stays importable without them.
+dependencies = [
+    "tiktoken",
+    "requests",
+]
+
+[project.optional-dependencies]
+# v2.1 similarity/clustering diagnostics (lawsofisrael.diagnostics_v2). These
+# are imported lazily so the package stays importable without them; matplotlib
+# is only needed for the optional condensed-tree / UMAP scatter plots.
+diagnostics = ["numpy", "pandas", "umap-learn", "hdbscan"]
+plots = ["matplotlib"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

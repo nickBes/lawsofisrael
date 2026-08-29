@@ -51,6 +51,22 @@ EMBEDDING_URL = os.getenv("EMBEDDING_URL", f"{EMBEDDING_HOST}:{EMBEDDING_PORT}")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3")
 EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "sk-local-embedding-key")
 
+# REMOTE (API) EMBEDDING MODEL ================================
+# Optional alternative embedding backend for the v2.1 diagnostics, served by the
+# same OpenAI-compatible provider as the chat model (e.g. Gemini's
+# gemini-embedding-2). Unlike the local bge-m3 server this sends bullet text to
+# the third-party API, so it is opt-in. The exact model id may change while the
+# model is in preview; override via GEMINI_EMBEDDING_MODEL if needed.
+GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2-preview")
+# Optional Matryoshka output dimensionality (blank = provider default). Gemini
+# recommends 3072, 1536, or 768.
+GEMINI_EMBEDDING_DIM = os.getenv("GEMINI_EMBEDDING_DIM", "").strip()
+GEMINI_EMBEDDING_DIM = int(GEMINI_EMBEDDING_DIM) if GEMINI_EMBEDDING_DIM else None
+# The Gemini embeddings endpoint reuses the chat provider's OpenAI-compatible
+# base_url and API key by default.
+GEMINI_EMBEDDING_BASE_URL = os.getenv("GEMINI_EMBEDDING_BASE_URL", OPENAI_BASE_URL)
+GEMINI_EMBEDDING_API_KEY = os.getenv("GEMINI_EMBEDDING_API_KEY", OPENAI_API_KEY)
+
 
 def describe() -> str:
     """Human-readable summary of the active configuration (no secrets)."""
