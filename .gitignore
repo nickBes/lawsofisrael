@@ -13,3 +13,13 @@ __pycache__/
 build/
 dist/
 .pytest_cache/
+
+# Local requests-cache SQLite store; processed Parquet files are the durable collection output.
+dataset/knesset_votes/.http_cache*
+
+# Raw captures: official PDF binaries + Smart Protocol pages. Large, regenerable
+# from law_pdf_url + pdf_sha256 in prepared/law_documents.parquet. Never committed.
+dataset/knesset_votes/raw/
+
+# Sample-mode outputs. Only RUN_MODE='release' writes the committed prepared/ tables.
+dataset/knesset_votes/prepared_sample/
