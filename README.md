@@ -4,14 +4,106 @@ Analysis of israeli laws based on https://main.knesset.gov.il/apps/legislation/m
 ## Notebooks
 
 1. [explore_data.ipynb](notebooks/explore_data.ipynb) — Initial data exploration and understanding
-2. [scrape_passed_bills.ipynb](notebooks/scrape_passed_bills.ipynb) — Scraping bill data from the Knesset website
-3. [create_passed_bills_dataset.ipynb](notebooks/create_passed_bills_dataset.ipynb) — Building the cleaned dataset
+2. [scrape_passed_bills.ipynb](notebooks/scrape_passed_bills.ipynb) — **Knesset votes collection:** plenum votes, individual member ballots, bills, members, faction stints and governments from the official Website API, normalized into the star schema in [`dataset/knesset_votes/prepared/`](#knesset-votes-dataset)
+3. [create_passed_bills_dataset.ipynb](notebooks/create_passed_bills_dataset.ipynb) — **Passed-bill text corpus:** flattens the raw bill JSON and attaches the official law PDF bytes, published as [`nickbes/lawsofisrael`](https://huggingface.co/datasets/nickbes/lawsofisrael). This is the corpus both LLooM notebooks read.
 4. [lloom_experiment.ipynb](notebooks/lloom_experiment.ipynb) — **LLooM baseline (v1):** default LLooM concept discovery, with scoring and export
 5. [lloom_experiment_v2.ipynb](notebooks/lloom_experiment_v2.ipynb) — **LLooM v2.1:** context-rich free-form summaries, similarity-first diagnostics (nearest neighbors + reproducible clustering), a manual clustering decision point, then compact condition-faithful Hebrew labels; no scoring; provenance exports
+6. [concept_pipeline.ipynb](notebooks/concept_pipeline.ipynb) — **Full 8,317-bill concept run:** scales the v2.1 approach to the whole vote-linked corpus, with every stage checkpointed to Parquet. Starts from `dim_bills` + `dim_bill_documents`, selects and locally caches one PDF per bill, then runs LLooM distill → Gemini embed → seeded UMAP/HDBSCAN → synthesize/review, and builds bill-level cluster/concept tables. No KNN, no scoring. See [Full 8,317-bill concept pipeline](#full-8317-bill-concept-pipeline).
 
-Both LLooM notebooks share one implementation of the deterministic preparation
+The LLooM notebooks share one implementation of the deterministic preparation
 steps (PDF extraction, chunking, model/session setup) via the `lawsofisrael`
 package under [`src/`](src/lawsofisrael). See [Shared package](#shared-package-srclawsofisrael).
+
+There are two distinct datasets in this repo, and they are easy to confuse:
+
+| Dataset | Built by | Lives in | Grain |
+|---|---|---|---|
+| [Knesset votes](#knesset-votes-dataset) | notebook 2 | `dataset/knesset_votes/prepared/` (committed) | voting behaviour: who voted how, on what |
+| Passed-bill corpus | notebook 3 | Hugging Face `nickbes/lawsofisrael` | enacted-law text: one bill + its official PDF |
+
+The LLooM notebooks (4, 5) read the **Hugging Face corpus**, not the votes tables.
+
+## Knesset votes dataset
+
+`dataset/knesset_votes/prepared/` holds the committed Parquet tables built by
+[scrape_passed_bills.ipynb](notebooks/scrape_passed_bills.ipynb) from the
+official Knesset Website API. Coverage is the 16th Knesset onward: **2,040 vote
+dates, Knessets 16-25, March 2003 to July 2026**. The data-quality checks pass
+on the committed run.
+
+### Tables
+
+Ten data tables, plus two that describe the run itself:
+
+| Table | Rows | Grain |
+|---|---|---|
+| `fact_votes` | 36,054 | one plenum vote, with its inferred reading and official tallies |
+| `fact_ballots` | 1,948,412 | one member's choice in one vote |
+| `fact_vote_counters` | 67,454 | one official result counter (בעד / נגד / נמנע) for one vote |
+| `fact_secret_vote_results` | 18 | one aggregate result of a secret (חשאית) vote |
+| `bridge_vote_bills` | 27,900 | one confirmed vote↔bill link |
+| `dim_bills` | 8,317 | one bill referenced by a bill-type vote |
+| `dim_bill_documents` | — | one legal document (`sessionAndDocs.LegalDocuments`) of a bill, with its official URL; the input the concept pipeline selects PDFs from |
+| `dim_members` | 1,103 | one Knesset member (all historical MKs) |
+| `bridge_member_factions` | 4,487 | one member/faction stint, dated, per Knesset |
+| `dim_governments` | 2,546 | one dated ministerial position, governments 0-38 (back to 1948) |
+| `collection_summary` | — | run-level counts, including the `full_run` flag |
+| `quality_report` | — | one integrity check: violations, limit, severity, status |
+
+Dimensions that would be pure projections of `fact_votes` — knessets, plenum
+sessions, agenda items — are **deliberately not materialised**; derive them with
+a `GROUP BY` instead. (Earlier sample-run leftovers for these, plus a 25-row
+`law_documents` table, were removed: they looked like real dimensions but covered
+only the 16th Knesset, so joining against them silently dropped ~90% of rows.
+Recover them from commit `bbeaed4` if needed.)
+
+### Things the schema will not tell you
+
+- **`reading` is null for 20,122 of 36,054 votes.** The reading (קריאה) is not an
+  API field; it is inferred from the free-text Hebrew motion in `Decision`. Null
+  means *"the motion did not state a reading"*, not *"no reading"*. Show that
+  label and the original `decision` rather than treating null as missing data.
+- **`knesset_num` vs `source_knesset_num`.** `knesset_num` is derived from the
+  official swearing-in calendar and describes *the vote*. `source_knesset_num` is
+  the raw API value, which on a carried-over bill is the bill's *originating*
+  Knesset — the two differ on 416 votes. Join on `knesset_num`.
+- **Only electronic (אלקטרונית, 34,877) and named (שמית, 1,087) votes carry member
+  ballots.** Show-of-hands (81) and secret (9) votes publish aggregates only, so a
+  vote with no rows in `fact_ballots` is usually correct, not incomplete.
+- **`initiators` is empty for government bills by design** — see
+  [Bill fields: initiators](#bill-fields-initiators).
+
+### Re-running the collection
+
+Two caches sit behind the notebook and only one of them travels between machines.
+This matters the moment you want to fix the table-build or quality-report logic:
+
+- **`.http_cache` (sqlite)** — every raw API response, keyed by request. Makes a
+  re-collect free, but it is machine-local and gitignored. On a fresh clone it does
+  not exist, so the default `CACHE_ONLY = True` fails on the very first request.
+- **`raw_snapshot/` (gzipped JSON, one file per collection stage)** — the payloads
+  each stage produced. This is the portable one. With it present, the four
+  collection sections load from disk and **the build and report cells re-run with
+  no network and no HTTP cache at all.**
+
+Each collection stage goes through a `stage(name, collect)` helper that writes its
+payloads once and reuses them forever after. Stages exchange only JSON-native
+types (never pickle — these files get copied between machines, and unpickling one
+would be arbitrary code execution), and writes are staged through a `.part` file so
+an interrupted save cannot leave a truncated snapshot that later loads as if it
+were complete.
+
+So if you only want to change a downstream cell:
+
+| Situation | What to do |
+|---|---|
+| You have the machine that collected it | Copy `dataset/knesset_votes/raw_snapshot/` across; keep `CACHE_ONLY = True` |
+| You have neither cache, and want the real full data | `CACHE_ONLY = False` once; the snapshot is written as it collects (hours) |
+| You have neither, and just want to exercise the logic | `CACHE_ONLY = False` **and** set `VOTE_DATE_SAMPLE = 40`, `BILL_LIMIT = 200` — minutes, and it writes to `prepared_sample/` |
+
+`FULL_RUN` is derived from the two limits rather than set by hand, so only a run
+with both limits at `None` can write the committed `prepared/` tables; anything
+sampled goes to `prepared_sample/`. Blocking quality failures abort a full run.
 
 ## Shared package (`src/lawsofisrael`)
 
@@ -38,6 +130,12 @@ package rather than being copied between notebooks:
   makes clustering a deliberate, inspected choice.
 - `lawsofisrael.v2_export` — the label + provenance export helpers and the
   reproducible run manifest.
+- `lawsofisrael.concepts` — mechanical plumbing for the full 8,317-bill run
+  ([concept_pipeline.ipynb](notebooks/concept_pipeline.ipynb)): Parquet
+  checkpoint helpers, the one-PDF-per-bill selection policy, a local
+  content-addressed PDF cache, extraction/chunking wrappers, and the bill-level
+  cluster/concept aggregation. The actual LLooM/Gemini/clustering calls live in
+  the notebook cells, not here.
 
 Install it once (editable) into your environment so the notebooks can import it:
 
@@ -45,6 +143,23 @@ Install it once (editable) into your environment so the notebooks can import it:
 # The notebooks also add ./src to sys.path automatically, so this is optional.
 pip install -e .        # or: uv pip install -e .
 ```
+
+### Environment
+
+Runtime dependencies are pinned in [pyproject.toml](pyproject.toml) and locked in
+`uv.lock`. On a new machine:
+
+```bash
+uv sync                 # base env: collection, preparation, publication
+uv sync --extra diagnostics --extra plots   # adds the v2.1 clustering/plot deps
+```
+
+The base pins are intentionally narrow (`pandas==2.2.3`, `pyarrow==18.1.0`,
+`requests-cache==1.2.1`, `datasets==3.2.0`); Docling, OCR and LLM dependencies are
+imported lazily and stay out of the default environment. If notebook 2 fails at the
+first import with `No module named 'requests_cache'`, or Parquet output stops
+matching the committed tables, the environment has drifted from the lock file —
+check with `uv pip list` before debugging the notebook.
 
 ## LLM & Embedding Setup
 
@@ -286,9 +401,11 @@ cluster with low mean membership probability is usually a grab-bag to inspect
 before trusting. Always confirm a cluster by reading its bullets, then trace the
 final label through `label_provenance_v2.parquet` to its source text.
 
-## Dataset Notes
+## Bill fields: initiators
 
-### Initiators Field
+Applies to `initiators` in both `dim_bills` and the Hugging Face corpus — it is the
+same upstream API field. For scale: of the 8,317 bills in `dim_bills`, 6,186 are
+private (פרטית), 2,061 government (ממשלתית) and 70 committee (ועדה) bills.
 
 The `initiators` field is **only populated for private bills** (הצעות חוק פרטיות). Government bills (הצעות חוק ממשלתיות) do not have individual initiators because they are proposed by the government itself.
 
@@ -298,3 +415,29 @@ The `initiators` field is **only populated for private bills** (הצעות חו�
 This is expected behavior from the Knesset API, not missing data.
 
 **Note:** Private bill initiators are always Knesset members. Third parties (citizens, organizations, lobbyists) cannot be listed as initiators, though they may draft bills that Knesset members formally propose.
+
+## Full 8,317-bill concept pipeline
+
+Scales LLooM concept discovery to the full vote-linked corpus. It is driven by
+[`notebooks/concept_pipeline.ipynb`](notebooks/concept_pipeline.ipynb) over flat
+helpers in [`lawsofisrael.concepts`](src/lawsofisrael/concepts.py), with every
+stage checkpointed to Parquet under `dataset/bill_concepts/runs/<run-id>/`. See
+[`docs/concept_pipeline.md`](docs/concept_pipeline.md) for the full data flow.
+
+It starts from the vote-linked `dim_bills` plus `dim_bill_documents` (the latter
+built by the scrape notebook from its existing request-cache — see below),
+selects one traceable PDF per bill, caches PDF binaries locally by SHA-256, then
+runs extraction, LLooM distillation, Gemini embeddings, seeded UMAP/HDBSCAN, and
+semantic concept synthesis/review.
+
+It intentionally performs **no nearest-neighbor stage and no concept scoring**.
+Final query tables are `bridge_bill_clusters.parquet` (direct HDBSCAN membership
+per bill), `bridge_bill_concepts.parquet`, and one-row-per-bill
+`bill_concepts.parquet`. Cluster membership probabilities are HDBSCAN strengths,
+not concept scores. Expensive calls are content-keyed, so re-running a stage
+reuses prior Parquet rows; changing clustering parameters never re-embeds.
+
+`dim_bill_documents.parquet` is produced by
+[`scrape_passed_bills.ipynb`](notebooks/scrape_passed_bills.ipynb), which already
+holds every bill-detail payload in its request-cache. Rerunning its build/report
+cells with `CACHE_ONLY = True` regenerates it with no new network calls.

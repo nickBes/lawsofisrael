@@ -14,12 +14,26 @@ build/
 dist/
 .pytest_cache/
 
-# Local requests-cache SQLite store; processed Parquet files are the durable collection output.
+# Local requests-cache SQLite store. Machine-local and not portable: it is keyed
+# by request and holds every raw API response. The durable, portable outputs are
+# prepared/*.parquet (final tables) and raw_snapshot/ (collection-stage state).
 dataset/knesset_votes/.http_cache*
 
-# Raw captures: official PDF binaries + Smart Protocol pages. Large, regenerable
-# from law_pdf_url + pdf_sha256 in prepared/law_documents.parquet. Never committed.
+# Collection-stage snapshot: the raw API payloads behind the prepared tables,
+# one gzipped JSON per stage. Large but portable -- copy this directory to
+# rebuild the tables on another machine with no network and no HTTP cache.
+dataset/knesset_votes/raw_snapshot/
+
+# Raw captures: official law PDF binaries. Large, regenerable from the
+# law_pdf_url column of the published dataset (nickbes/lawsofisrael). The
+# collection notebook does not fetch PDFs; dim_bills carries enough to find them.
 dataset/knesset_votes/raw/
 
-# Sample-mode outputs. Only RUN_MODE='release' writes the committed prepared/ tables.
+# Sample-mode outputs. Only a full run (VOTE_DATE_SAMPLE and BILL_LIMIT both
+# None, i.e. FULL_RUN) writes the committed prepared/ tables.
 dataset/knesset_votes/prepared_sample/
+
+# Local-only binaries and transient state for the full-bill concept pipeline.
+# Publishable Parquet runs under dataset/bill_concepts/runs/ are intentionally tracked.
+dataset/bill_concepts/raw/
+dataset/bill_concepts/cache/
