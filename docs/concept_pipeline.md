@@ -20,9 +20,9 @@ extraction/chunking wrappers, and the bill-level aggregation.
 
 ```text
 dim_bills + dim_bill_documents
-  cp.select_documents            -> document_selection      (module: policy)
-  cp.download_pdfs               -> pdf_manifest             (module: SHA-256 PDF store)
-  cp.extract_pdfs / build_chunks -> extraction_documents, extraction_blocks, chunks
+  cp.select_documents                 -> document_selection       (module: policy)
+  cp.download_documents                -> document_manifest         (module: SHA-256 document store)
+  cp.extract_documents / build_chunks  -> extraction_documents, extraction_blocks, chunks
   notebook: distill_filter + distill_summarize -> bullets    (LLooM, in cells)
   notebook: embed_model.fn loop                -> embedding_inputs, embeddings (Gemini, in cells)
   notebook: diag.run_clustering per candidate  -> cluster_assignments, cluster_summaries (in cells)
@@ -43,9 +43,9 @@ saved embeddings instead of re-calling Gemini.
 All artifacts for one run live under a single flat directory, e.g.:
 
 ```text
-dataset/bill_concepts/runs/full-v1/
+dataset/bill_concepts/runs/full-v2/
   document_selection.parquet
-  pdf_manifest.parquet
+  document_manifest.parquet
   extraction_documents.parquet
   extraction_blocks.parquet
   chunks.parquet
@@ -63,9 +63,11 @@ dataset/bill_concepts/runs/full-v1/
   quality_report.parquet
 ```
 
-PDF binaries are stored only under `dataset/bill_concepts/raw/pdfs/sha256/`
-(git-ignored). The manifest keeps the official URL, PDF SHA-256, byte count and
-status; no PDF bytes are written to Parquet.
+Selected PDF, DOCX, and DOC binaries are stored only under
+`dataset/bill_concepts/raw/documents/sha256/` (git-ignored). The manifest keeps
+the official URL, detected format, content SHA-256, byte count, and status; no
+binary document bytes are written to Parquet. DOC and RTF extraction require
+Docling's LibreOffice-backed legacy Office support.
 
 ## Final tables
 
@@ -102,20 +104,23 @@ dim_bill_documents = normalize_bill_documents(bill_details)
 
 So the document table is regenerated with **no new network calls** by rerunning
 the scrape notebook's build/report cells against the existing cache
-(`CACHE_ONLY = True`). Only `FileText`/`FilePath` are known document fields; the
-full document JSON is retained verbatim in `raw_document_json` rather than
-guessing a schema.
+(`CACHE_ONLY = True`). The normalizer intentionally flattens only `sessionAndDocs.LegalDocuments` and
+`sessionAndDocs.DraftLaws`; background, government, committee, and follow-up
+collections are not candidates. It records `FileText`, `FilePath`, and
+`FileDate`, while retaining the full item JSON in `raw_document_json`.
 
-Document *selection* (one PDF per bill) is a concept-pipeline concern and lives
-in `concepts.select_documents`: passed bills prefer the exact official
-published-law document, otherwise a ranked fallback; bills with no usable PDF
-are kept with an explicit `selection_state`.
+Document _selection_ chooses one PDF, DOCX, DOC, or RTF legal text per bill. The
+rank is: official published law, unofficial consolidated law, second/third
+reading draft, first-reading draft, then preliminary draft. Format breaks ties
+only (PDF, then DOCX, then DOC, then RTF), so a later draft is never displaced by an
+earlier document merely because it is a PDF. Bills without an eligible document
+are retained with an explicit `selection_state`.
 
 ## Query example
 
 ```sql
 SELECT concept_label, count(DISTINCT bill_id) AS bills
-FROM read_parquet('dataset/bill_concepts/runs/full-v1/bridge_bill_concepts.parquet')
+FROM read_parquet('dataset/bill_concepts/runs/full-v2/bridge_bill_concepts.parquet')
 GROUP BY concept_label
 ORDER BY bills DESC;
 ```

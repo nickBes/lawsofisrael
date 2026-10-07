@@ -33,7 +33,9 @@ dataset/knesset_votes/raw/
 # None, i.e. FULL_RUN) writes the committed prepared/ tables.
 dataset/knesset_votes/prepared_sample/
 
-# Local-only binaries and transient state for the full-bill concept pipeline.
-# Publishable Parquet runs under dataset/bill_concepts/runs/ are intentionally tracked.
+# Local-only binaries and resumable checkpoints for the full-bill concept
+# pipeline. Publish final tables separately rather than committing an in-progress
+# run's download, extraction, paid-model, and clustering state.
 dataset/bill_concepts/raw/
 dataset/bill_concepts/cache/
+dataset/bill_concepts/runs/

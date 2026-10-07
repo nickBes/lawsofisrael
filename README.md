@@ -1,4 +1,5 @@
 # lawsofisrael
+
 Analysis of israeli laws based on https://main.knesset.gov.il/apps/legislation/main/bills
 
 ## Notebooks
@@ -8,7 +9,7 @@ Analysis of israeli laws based on https://main.knesset.gov.il/apps/legislation/m
 3. [create_passed_bills_dataset.ipynb](notebooks/create_passed_bills_dataset.ipynb) — **Passed-bill text corpus:** flattens the raw bill JSON and attaches the official law PDF bytes, published as [`nickbes/lawsofisrael`](https://huggingface.co/datasets/nickbes/lawsofisrael). This is the corpus both LLooM notebooks read.
 4. [lloom_experiment.ipynb](notebooks/lloom_experiment.ipynb) — **LLooM baseline (v1):** default LLooM concept discovery, with scoring and export
 5. [lloom_experiment_v2.ipynb](notebooks/lloom_experiment_v2.ipynb) — **LLooM v2.1:** context-rich free-form summaries, similarity-first diagnostics (nearest neighbors + reproducible clustering), a manual clustering decision point, then compact condition-faithful Hebrew labels; no scoring; provenance exports
-6. [concept_pipeline.ipynb](notebooks/concept_pipeline.ipynb) — **Full 8,317-bill concept run:** scales the v2.1 approach to the whole vote-linked corpus, with every stage checkpointed to Parquet. Starts from `dim_bills` + `dim_bill_documents`, selects and locally caches one PDF per bill, then runs LLooM distill → Gemini embed → seeded UMAP/HDBSCAN → synthesize/review, and builds bill-level cluster/concept tables. No KNN, no scoring. See [Full 8,317-bill concept pipeline](#full-8317-bill-concept-pipeline).
+6. [concept_pipeline.ipynb](notebooks/concept_pipeline.ipynb) — **Full 8,317-bill concept run:** scales the v2.1 approach to the whole vote-linked corpus, with every stage checkpointed to Parquet. Starts from `dim_bills` + `dim_bill_documents`, selects and locally caches one authoritative PDF/DOCX/DOC legal text per bill, then runs LLooM distill → Gemini embed → seeded UMAP/HDBSCAN → synthesize/review, and builds bill-level cluster/concept tables. No KNN, no scoring. See [Full 8,317-bill concept pipeline](#full-8317-bill-concept-pipeline).
 
 The LLooM notebooks share one implementation of the deterministic preparation
 steps (PDF extraction, chunking, model/session setup) via the `lawsofisrael`
@@ -16,10 +17,10 @@ package under [`src/`](src/lawsofisrael). See [Shared package](#shared-package-s
 
 There are two distinct datasets in this repo, and they are easy to confuse:
 
-| Dataset | Built by | Lives in | Grain |
-|---|---|---|---|
-| [Knesset votes](#knesset-votes-dataset) | notebook 2 | `dataset/knesset_votes/prepared/` (committed) | voting behaviour: who voted how, on what |
-| Passed-bill corpus | notebook 3 | Hugging Face `nickbes/lawsofisrael` | enacted-law text: one bill + its official PDF |
+| Dataset                                 | Built by   | Lives in                                      | Grain                                         |
+| --------------------------------------- | ---------- | --------------------------------------------- | --------------------------------------------- |
+| [Knesset votes](#knesset-votes-dataset) | notebook 2 | `dataset/knesset_votes/prepared/` (committed) | voting behaviour: who voted how, on what      |
+| Passed-bill corpus                      | notebook 3 | Hugging Face `nickbes/lawsofisrael`           | enacted-law text: one bill + its official PDF |
 
 The LLooM notebooks (4, 5) read the **Hugging Face corpus**, not the votes tables.
 
@@ -35,20 +36,20 @@ on the committed run.
 
 Ten data tables, plus two that describe the run itself:
 
-| Table | Rows | Grain |
-|---|---|---|
-| `fact_votes` | 36,054 | one plenum vote, with its inferred reading and official tallies |
-| `fact_ballots` | 1,948,412 | one member's choice in one vote |
-| `fact_vote_counters` | 67,454 | one official result counter (בעד / נגד / נמנע) for one vote |
-| `fact_secret_vote_results` | 18 | one aggregate result of a secret (חשאית) vote |
-| `bridge_vote_bills` | 27,900 | one confirmed vote↔bill link |
-| `dim_bills` | 8,317 | one bill referenced by a bill-type vote |
-| `dim_bill_documents` | — | one legal document (`sessionAndDocs.LegalDocuments`) of a bill, with its official URL; the input the concept pipeline selects PDFs from |
-| `dim_members` | 1,103 | one Knesset member (all historical MKs) |
-| `bridge_member_factions` | 4,487 | one member/faction stint, dated, per Knesset |
-| `dim_governments` | 2,546 | one dated ministerial position, governments 0-38 (back to 1948) |
-| `collection_summary` | — | run-level counts, including the `full_run` flag |
-| `quality_report` | — | one integrity check: violations, limit, severity, status |
+| Table                      | Rows      | Grain                                                                                                                                                                                         |
+| -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fact_votes`               | 36,054    | one plenum vote, with its inferred reading and official tallies                                                                                                                               |
+| `fact_ballots`             | 1,948,412 | one member's choice in one vote                                                                                                                                                               |
+| `fact_vote_counters`       | 67,454    | one official result counter (בעד / נגד / נמנע) for one vote                                                                                                                                   |
+| `fact_secret_vote_results` | 18        | one aggregate result of a secret (חשאית) vote                                                                                                                                                 |
+| `bridge_vote_bills`        | 27,900    | one confirmed vote↔bill link                                                                                                                                                                  |
+| `dim_bills`                | 8,317     | one bill referenced by a bill-type vote                                                                                                                                                       |
+| `dim_bill_documents`       | —         | one candidate legal text from the allowlisted `sessionAndDocs.LegalDocuments` / `DraftLaws` collections, with its official URL; the input the concept pipeline ranks to one document per bill |
+| `dim_members`              | 1,103     | one Knesset member (all historical MKs)                                                                                                                                                       |
+| `bridge_member_factions`   | 4,487     | one member/faction stint, dated, per Knesset                                                                                                                                                  |
+| `dim_governments`          | 2,546     | one dated ministerial position, governments 0-38 (back to 1948)                                                                                                                               |
+| `collection_summary`       | —         | run-level counts, including the `full_run` flag                                                                                                                                               |
+| `quality_report`           | —         | one integrity check: violations, limit, severity, status                                                                                                                                      |
 
 Dimensions that would be pure projections of `fact_votes` — knessets, plenum
 sessions, agenda items — are **deliberately not materialised**; derive them with
@@ -61,11 +62,11 @@ Recover them from commit `bbeaed4` if needed.)
 
 - **`reading` is null for 20,122 of 36,054 votes.** The reading (קריאה) is not an
   API field; it is inferred from the free-text Hebrew motion in `Decision`. Null
-  means *"the motion did not state a reading"*, not *"no reading"*. Show that
+  means _"the motion did not state a reading"_, not _"no reading"_. Show that
   label and the original `decision` rather than treating null as missing data.
 - **`knesset_num` vs `source_knesset_num`.** `knesset_num` is derived from the
-  official swearing-in calendar and describes *the vote*. `source_knesset_num` is
-  the raw API value, which on a carried-over bill is the bill's *originating*
+  official swearing-in calendar and describes _the vote_. `source_knesset_num` is
+  the raw API value, which on a carried-over bill is the bill's _originating_
   Knesset — the two differ on 416 votes. Join on `knesset_num`.
 - **Only electronic (אלקטרונית, 34,877) and named (שמית, 1,087) votes carry member
   ballots.** Show-of-hands (81) and secret (9) votes publish aggregates only, so a
@@ -95,10 +96,10 @@ were complete.
 
 So if you only want to change a downstream cell:
 
-| Situation | What to do |
-|---|---|
-| You have the machine that collected it | Copy `dataset/knesset_votes/raw_snapshot/` across; keep `CACHE_ONLY = True` |
-| You have neither cache, and want the real full data | `CACHE_ONLY = False` once; the snapshot is written as it collects (hours) |
+| Situation                                             | What to do                                                                                                                  |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| You have the machine that collected it                | Copy `dataset/knesset_votes/raw_snapshot/` across; keep `CACHE_ONLY = True`                                                 |
+| You have neither cache, and want the real full data   | `CACHE_ONLY = False` once; the snapshot is written as it collects (hours)                                                   |
 | You have neither, and just want to exercise the logic | `CACHE_ONLY = False` **and** set `VOTE_DATE_SAMPLE = 40`, `BILL_LIMIT = 200` — minutes, and it writes to `prepared_sample/` |
 
 `FULL_RUN` is derived from the two limits rather than set by hand, so only a run
@@ -110,9 +111,9 @@ sampled goes to `prepared_sample/`. Blocking quality failures abort a full run.
 The preparation pipeline that both notebooks depend on lives in an importable
 package rather than being copied between notebooks:
 
-- `lawsofisrael.extraction` — Docling PDF extraction with a selective Hebrew OCR
-  fallback for low-text pages, a versioned extraction-record schema, and
-  incremental JSON caching (`notebooks/cache/extraction/{bill_id}.json`).
+- `lawsofisrael.extraction` — Docling extraction for PDF, DOCX, legacy DOC, and
+  RTF, with a selective Hebrew OCR fallback for low-text PDF pages, a versioned
+  extraction-record schema, and incremental JSON caching (`notebooks/cache/extraction/{bill_id}.json`).
 - `lawsofisrael.chunking` — legal-unit splitting, token budgeting, stable
   `bill_id:ordinal` chunk IDs, and provenance-preserving chunks that carry an
   ordered list of contributing `source_spans` (text, heading path, page number,
@@ -132,8 +133,8 @@ package rather than being copied between notebooks:
   reproducible run manifest.
 - `lawsofisrael.concepts` — mechanical plumbing for the full 8,317-bill run
   ([concept_pipeline.ipynb](notebooks/concept_pipeline.ipynb)): Parquet
-  checkpoint helpers, the one-PDF-per-bill selection policy, a local
-  content-addressed PDF cache, extraction/chunking wrappers, and the bill-level
+  checkpoint helpers, the one-authoritative-document-per-bill selection policy,
+  a local content-addressed PDF/DOCX/DOC/RTF cache, extraction/chunking wrappers, and
   cluster/concept aggregation. The actual LLooM/Gemini/clustering calls live in
   the notebook cells, not here.
 
@@ -151,12 +152,15 @@ Runtime dependencies are pinned in [pyproject.toml](pyproject.toml) and locked i
 
 ```bash
 uv sync                 # base env: collection, preparation, publication
-uv sync --extra diagnostics --extra plots   # adds the v2.1 clustering/plot deps
+uv sync --extra lloom --extra diagnostics --extra plots --extra extraction
+# adds the LLooM, clustering/plot, and Docling extraction stacks
 ```
 
 The base pins are intentionally narrow (`pandas==2.2.3`, `pyarrow==18.1.0`,
-`requests-cache==1.2.1`, `datasets==3.2.0`); Docling, OCR and LLM dependencies are
-imported lazily and stay out of the default environment. If notebook 2 fails at the
+`requests-cache==1.3.3`, `datasets==3.2.0`). LLM and extraction dependencies
+are optional; the concept pipeline requires the command above. PDF OCR further
+requires Tesseract with Hebrew data, and legacy `.doc` extraction requires the
+LibreOffice system binary used by Docling. If notebook 2 fails at the
 first import with `No module named 'requests_cache'`, or Parquet output stops
 matching the committed tables, the environment has drifted from the lock file —
 check with `uv pip list` before debugging the notebook.
@@ -197,14 +201,14 @@ print(MODEL_CONFIG["context_window"])
 
 Key env vars (see [.env.example](.env.example)):
 
-| Variable | Purpose | Default |
-|---|---|---|
-| `OPENAI_API_KEY` | API key for the LLM provider | *(required)* |
-| `OPENAI_BASE_URL` | OpenAI-compatible API endpoint | Gemini API |
-| `OPENAI_MODEL` | Model name | `gemini-2.5-flash` |
-| `MAX_CONTEXT_TOKENS` | Context window size | `1048576` |
-| `MAX_OUTPUT_TOKENS` | Max output tokens | `8192` |
-| `RATE_LIMIT_RPM` | Requests per minute | `15` |
+| Variable             | Purpose                        | Default            |
+| -------------------- | ------------------------------ | ------------------ |
+| `OPENAI_API_KEY`     | API key for the LLM provider   | _(required)_       |
+| `OPENAI_BASE_URL`    | OpenAI-compatible API endpoint | Gemini API         |
+| `OPENAI_MODEL`       | Model name                     | `gemini-2.5-flash` |
+| `MAX_CONTEXT_TOKENS` | Context window size            | `1048576`          |
+| `MAX_OUTPUT_TOKENS`  | Max output tokens              | `8192`             |
+| `RATE_LIMIT_RPM`     | Requests per minute            | `15`               |
 
 ### Local embedding server
 
@@ -223,14 +227,14 @@ clustering**. LLooM's default quote filter is kept; both the summaries and the
 final labels are customised.
 
 - **Context-rich free-form summaries.** The generic default summary is replaced
-  by a versioned prompt that produces natural Hebrew *operative-rule* bullets
+  by a versioned prompt that produces natural Hebrew _operative-rule_ bullets
   keeping whatever distinguishes one rule from another — affected population,
   actor, legal action, object, legal domain, and any exception/condition/time
   limit/emergency context — instead of collapsing to generic verbs like
   `תיקון חוק`, `הארכת תוקף`, or a lone `זכות`. It is not a rigid schema: no
   required slots, no mandatory field template.
 - **Compact condition-faithful labels.** Synthesis still produces short Hebrew
-  labels that keep material qualifications *inline* — negation, carve-outs
+  labels that keep material qualifications _inline_ — negation, carve-outs
   (`למעט`), conditions (`בכפוף`), temporal/emergency provisions (`הוראת שעה`),
   and eligibility criteria.
 
@@ -244,7 +248,7 @@ order and **does not bake in a cluster-size cutoff**:
    any clustering.
 2. **Bullet artifact + accounting** — the exact bullets entering the embedding
    stage are captured with stable ids and chunk linkage, and chunks that
-   produced *no* bullet are counted (a proxy for malformed/empty model JSON).
+   produced _no_ bullet are counted (a proxy for malformed/empty model JSON).
 3. **Nearest-neighbor explorer** — bullets are embedded with the local bge-m3
    model and their cosine nearest neighbors are inspected over the **raw**
    vectors (self excluded), before UMAP/HDBSCAN can distort the space.
@@ -255,7 +259,7 @@ order and **does not bake in a cluster-size cutoff**:
    and outlier scores, and writes its condensed-tree table (plus optional plots
    if `matplotlib` is installed — it is optional, tables are the source of
    truth).
-5. **Decision point → synthesis** — you *manually* set `CHOSEN_CONFIG`. While it
+5. **Decision point → synthesis** — you _manually_ set `CHOSEN_CONFIG`. While it
    is `None` the notebook stays in an exploratory, **no-label** state. Once
    chosen, a guard confirms the clustering result was built from the same
    summarize prompt (and therefore the same bullets) you inspected, then labels
@@ -266,7 +270,7 @@ order and **does not bake in a cluster-size cutoff**:
 - **No scoring / no apply.** v2.1 ends after generation, review, and selection.
   It does **not** call `session.score`, build a scores table, or apply concepts
   to documents. There is no `scores.parquet` from v2.1. (The v1 baseline shares
-  the `outputs/` directory and *does* score, so `scores.parquet`/`concepts.parquet`
+  the `outputs/` directory and _does_ score, so `scores.parquet`/`concepts.parquet`
   there belong to v1.)
 - **Development subset by default.** `N_BILLS = 8` for fast, cheap iteration;
   set `N_BILLS = None` for the full corpus.
@@ -278,15 +282,15 @@ order and **does not bake in a cluster-size cutoff**:
 
 ### v2.1 outputs
 
-| File | Contents |
-|---|---|
-| `outputs/diagnostics/bullets_v2.parquet` | Pre-clustering bullet corpus: `bullet_row_id`, `chunk_id`, `bullet_ordinal`, original `bullet` text, prompt/run metadata |
-| `outputs/diagnostics/nearest_neighbors_v2.parquet` | Per-bullet cosine nearest neighbors (self excluded): query id/text, `rank`, `neighbor_id`, `neighbor_bullet`, `similarity` |
-| `outputs/diagnostics/condensed_tree_<key>_<run_id>.parquet` | `hdb.condensed_tree_.to_pandas()` for a diagnostic clustering config (filename includes the config/run id) |
-| `outputs/diagnostics/*.png` | Optional condensed-tree and UMAP scatter plots (only if `matplotlib` is installed) |
-| `outputs/labels_v2.parquet` | One row per selected label: `concept_id`, `label` (Hebrew), internal `criterion`, representative chunk ids *(only when a config is chosen)* |
-| `outputs/label_provenance_v2.parquet` | One row per (label, representative chunk): `bill_id`, `bill_title`, `heading_path`, `page_no`, ordered `source_spans`, raw `source_text`, plus the LLooM `quotes`/`bullets` the label was synthesized from *(only when a config is chosen)* |
-| `outputs/run_manifest_v2.json` | The reproducible run contract, diagnostic-workflow metadata, and the label caveat (always written) |
+| File                                                        | Contents                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `outputs/diagnostics/bullets_v2.parquet`                    | Pre-clustering bullet corpus: `bullet_row_id`, `chunk_id`, `bullet_ordinal`, original `bullet` text, prompt/run metadata                                                                                                                    |
+| `outputs/diagnostics/nearest_neighbors_v2.parquet`          | Per-bullet cosine nearest neighbors (self excluded): query id/text, `rank`, `neighbor_id`, `neighbor_bullet`, `similarity`                                                                                                                  |
+| `outputs/diagnostics/condensed_tree_<key>_<run_id>.parquet` | `hdb.condensed_tree_.to_pandas()` for a diagnostic clustering config (filename includes the config/run id)                                                                                                                                  |
+| `outputs/diagnostics/*.png`                                 | Optional condensed-tree and UMAP scatter plots (only if `matplotlib` is installed)                                                                                                                                                          |
+| `outputs/labels_v2.parquet`                                 | One row per selected label: `concept_id`, `label` (Hebrew), internal `criterion`, representative chunk ids _(only when a config is chosen)_                                                                                                 |
+| `outputs/label_provenance_v2.parquet`                       | One row per (label, representative chunk): `bill_id`, `bill_title`, `heading_path`, `page_no`, ordered `source_spans`, raw `source_text`, plus the LLooM `quotes`/`bullets` the label was synthesized from _(only when a config is chosen)_ |
+| `outputs/run_manifest_v2.json`                              | The reproducible run contract, diagnostic-workflow metadata, and the label caveat (always written)                                                                                                                                          |
 
 Every selected label is required to have at least one representative chunk that
 resolves to the chunk table, so no label is exported without evidence. In the
@@ -333,17 +337,17 @@ made the failures visible and drove a sequence of fixes, in order of impact:
    occasionally leaks one, which is a candidate for a future deterministic
    filter.)
 3. **Embedding representation — the biggest lever.** Short Hebrew rule phrases
-   embedded into one narrow "legal register" band, so *unrelated* bullets sat at
+   embedded into one narrow "legal register" band, so _unrelated_ bullets sat at
    ~0.85 cosine and clustering had no contrast. Three changes fixed this:
    - an **instruction prefix** telling the embedder to represent the legal
-     *effect / subject-matter domain* (see `diagnostics_v2.DEFAULT_EMBED_INSTRUCTION`);
+     _effect / subject-matter domain_ (see `diagnostics_v2.DEFAULT_EMBED_INSTRUCTION`);
    - **domain enrichment**: prepending each bullet's bill title + heading path
      before embedding, injecting the domain signal the bare phrase lacked;
    - the **`gemini-embedding-2` model at 3072 dims** (`EMBED_BACKEND='gemini'`)
      instead of local bge-m3, which separated concepts far better on this text.
-   After these, nearest neighbors became domain-coherent and crossed bill
-   boundaries on shared concepts, and the similarity band spread out enough for
-   density clustering to have contrast.
+     After these, nearest neighbors became domain-coherent and crossed bill
+     boundaries on shared concepts, and the similarity band spread out enough for
+     density clustering to have contrast.
 4. **Corpus size.** More bills give density clustering the cross-bill company a
    concept needs to form. Thin coverage is the main remaining cause of
    single-bill clusters and the occasional heterogeneous "grab-bag" cluster.
@@ -359,13 +363,13 @@ The clustering-diagnostics wrapper (`diagnostics_v2.ClusterConfig` /
 matter. The two that most change the result are HDBSCAN's
 `cluster_selection_method` and `min_cluster_size`:
 
-- **`eom` (excess of mass)** prefers *fewer, larger* clusters selected higher up
+- **`eom` (excess of mass)** prefers _fewer, larger_ clusters selected higher up
   the condensed tree. On this corpus it over-merged: it pulled loosely related
   neighborhoods into big, low-confidence "grab-bag" clusters (e.g. a 42-bullet,
   8-bill cluster with mean membership probability ~0.52). Raising
-  `min_cluster_size` under `eom` made this *worse*, not better.
-- **`leaf`** selects the *finest* clusters at the bottom of the tree — *more,
-  smaller, tighter* clusters. It avoids the bad merges but produces more
+  `min_cluster_size` under `eom` made this _worse_, not better.
+- **`leaf`** selects the _finest_ clusters at the bottom of the tree — _more,
+  smaller, tighter_ clusters. It avoids the bad merges but produces more
   single-bill clusters (a narrow concept from one bill, flagged by the
   `single_bill` column — correct, not junk).
 - **`min_cluster_size`** is the floor on cluster size: smaller allows more
@@ -375,15 +379,15 @@ matter. The two that most change the result are HDBSCAN's
 
 Configurations compared (all seed 42, UMAP 15×5):
 
-| Config | method | min_cluster_size | Result |
-|---|---|---|---|
-| A | leaf | 3 | Very fragmented; many tiny single-bill clusters |
-| B | eom | 5 | ~2 good cross-bill concepts + grab-bags |
-| C | leaf | 5 | ≈ B; grab-bags survived |
-| D | eom | 7 | Worse — one 42-bullet, mean_prob 0.52 grab-bag |
-| **E** | **leaf** | **4** | **Chosen** — many coherent clusters, minimal bad merges |
+| Config | method   | min_cluster_size | Result                                                  |
+| ------ | -------- | ---------------- | ------------------------------------------------------- |
+| A      | leaf     | 3                | Very fragmented; many tiny single-bill clusters         |
+| B      | eom      | 5                | ~2 good cross-bill concepts + grab-bags                 |
+| C      | leaf     | 5                | ≈ B; grab-bags survived                                 |
+| D      | eom      | 7                | Worse — one 42-bullet, mean_prob 0.52 grab-bag          |
+| **E**  | **leaf** | **4**            | **Chosen** — many coherent clusters, minimal bad merges |
 
-**Why E.** The goal here favors *over-splitting over bad merges*: an
+**Why E.** The goal here favors _over-splitting over bad merges_: an
 over-split concept can be merged or ignored later, but merging unrelated
 concepts destroys information. `leaf` is the "more, tighter clusters" method by
 design, and `min_cluster_size=4` is a middle ground between A's over-fragmented
@@ -394,7 +398,7 @@ it easy to flag and drop. Note that HDBSCAN **cluster ids are not stable across
 configurations** — compare clusters by their bullet contents, not by id.
 
 **Deciding whether a cluster is real.** The `ClusterResult.cluster_composition`
-diagnostic reports, per cluster, how many *distinct bills* it spans and flags
+diagnostic reports, per cluster, how many _distinct bills_ it spans and flags
 single-bill clusters. A cluster spanning several bills on a shared concept is the
 target; a single-bill cluster is a narrow (but often valid) concept; a large
 cluster with low mean membership probability is usually a grab-bag to inspect
@@ -426,8 +430,8 @@ stage checkpointed to Parquet under `dataset/bill_concepts/runs/<run-id>/`. See
 
 It starts from the vote-linked `dim_bills` plus `dim_bill_documents` (the latter
 built by the scrape notebook from its existing request-cache — see below),
-selects one traceable PDF per bill, caches PDF binaries locally by SHA-256, then
-runs extraction, LLooM distillation, Gemini embeddings, seeded UMAP/HDBSCAN, and
+selects one traceable authoritative PDF/DOCX/DOC legal text per bill, caches
+content-addressed binaries locally by SHA-256, then runs extraction, LLooM distillation, Gemini embeddings, seeded UMAP/HDBSCAN, and
 semantic concept synthesis/review.
 
 It intentionally performs **no nearest-neighbor stage and no concept scoring**.

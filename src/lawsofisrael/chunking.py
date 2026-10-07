@@ -161,19 +161,23 @@ def iter_units(record: dict) -> list[_Unit]:
         current_page = current_page or block.get("page_no")
         block_id = block.get("block_id")
         for piece in (u.strip() for u in LEGAL_BREAK.split(block["text"]) if u.strip()):
-            units.append(_Unit(
-                text=piece,
-                heading_path=current_path,
-                page_no=current_page,
-                block_id=block_id,
-            ))
+            units.append(
+                _Unit(
+                    text=piece,
+                    heading_path=current_path,
+                    page_no=current_page,
+                    block_id=block_id,
+                )
+            )
     return units
 
 
 # ---------------------------------------------------------------------------
 # Packing units into chunks with provenance
 # ---------------------------------------------------------------------------
-def _pack(units: list[_Unit], chunk_tokens: int, n_tokens: TokenCounter) -> list[list[SourceSpan]]:
+def _pack(
+    units: list[_Unit], chunk_tokens: int, n_tokens: TokenCounter
+) -> list[list[SourceSpan]]:
     """Pack units into chunks; return each chunk as an ordered list of spans.
 
     Reproduces v1's :func:`split_chunks` packing (greedy up to ``chunk_tokens``,
@@ -181,6 +185,29 @@ def _pack(units: list[_Unit], chunk_tokens: int, n_tokens: TokenCounter) -> list
     piece so provenance is preserved. Oversized units are hard-split, and each
     resulting piece becomes its own span pointing back at the same source unit.
     """
+    # With a whole-bill budget, the legacy greedy loop used to tokenize the
+    # growing prefix once per legal unit (quadratic work). This is exactly the
+    # same result as that loop when each unit and their joined text fit: one
+    # ordered span list, with no hard splitting or flush.
+    if units:
+        joined = SEP.join(unit.text for unit in units).strip()
+        if (
+            joined
+            and n_tokens(joined) <= chunk_tokens
+            and all(n_tokens(unit.text) <= chunk_tokens for unit in units)
+        ):
+            return [
+                [
+                    SourceSpan(
+                        text=unit.text,
+                        heading_path=unit.heading_path,
+                        page_no=unit.page_no,
+                        block_id=unit.block_id,
+                    )
+                    for unit in units
+                ]
+            ]
+
     chunks: list[list[SourceSpan]] = []
     buf_spans: list[SourceSpan] = []
 
@@ -200,7 +227,10 @@ def _pack(units: list[_Unit], chunk_tokens: int, n_tokens: TokenCounter) -> list
                 page_no=unit.page_no,
                 block_id=unit.block_id,
             )
-            if buf_spans and n_tokens(SEP.join([buf_text(), piece]).strip()) > chunk_tokens:
+            if (
+                buf_spans
+                and n_tokens(SEP.join([buf_text(), piece]).strip()) > chunk_tokens
+            ):
                 chunks.append(buf_spans)
                 buf_spans = [span]
             else:
@@ -263,16 +293,18 @@ def chunk_bill(
     for ordinal, spans in enumerate(packed):
         text = SEP.join(s.text for s in spans).strip()
         first = spans[0]
-        chunks.append(Chunk(
-            bill_id=bill_id,
-            name=name,
-            chunk_id=f"{bill_id}:{ordinal:04d}",
-            text=text,
-            tokens=n_tokens(text),
-            heading_path=first.heading_path,
-            page_no=first.page_no,
-            source_spans=spans,
-        ))
+        chunks.append(
+            Chunk(
+                bill_id=bill_id,
+                name=name,
+                chunk_id=f"{bill_id}:{ordinal:04d}",
+                text=text,
+                tokens=n_tokens(text),
+                heading_path=first.heading_path,
+                page_no=first.page_no,
+                source_spans=spans,
+            )
+        )
     return chunks
 
 
@@ -293,8 +325,9 @@ def chunks_to_records(chunks: Iterable[Chunk]) -> list[dict]:
     return [c.to_dict() for c in chunks]
 
 
-def compute_chunk_budget(max_context_tokens: int, max_output_tokens: int,
-                        prompt_overhead: int = 2000) -> int:
+def compute_chunk_budget(
+    max_context_tokens: int, max_output_tokens: int, prompt_overhead: int = 2000
+) -> int:
     """Token budget per chunk, reserving prompt overhead + output headroom.
 
     Matches v1: ``CHUNK_TOKENS = MAX_CONTEXT_TOKENS - MAX_OUTPUT_TOKENS - PROMPT_OVERHEAD``.

@@ -1,7 +1,7 @@
 """
 extraction.py
 -------------
-PDF extraction, selective Hebrew OCR fallback, extraction-record schema,
+Document extraction, selective Hebrew OCR fallback for PDFs, extraction-record schema,
 cache I/O, and cache validation for the passed-laws corpus.
 
 This is the single, tested implementation shared by both the v1 baseline
@@ -26,7 +26,8 @@ A *successful* record is a dict with these fields:
     - ``page_no``: 1-based source page number (or ``None``)
     - ``heading_path``: list[str] heading hierarchy at this block
     - ``source``: ``"docling"`` | ``"ocr"`` - provenance of the block text
-- ``page_count``: number of physical PDF pages
+- ``page_count``: number of physical pages when available (``None`` for
+  reflowable formats that do not expose stable pages)
 - ``hebrew_ratio``: fraction of Hebrew characters across extracted text
 - ``ocr_fallback_used``: bool - whether any page went through OCR
 - ``extracted_at``: ISO-8601 UTC timestamp
@@ -54,7 +55,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 # Current on-disk record shape. Kept in sync with lawsofisrael.EXTRACTION_SCHEMA_VERSION.
-EXTRACTION_SCHEMA_VERSION = 1
+EXTRACTION_SCHEMA_VERSION = 2
 
 # A page whose stripped (whitespace-removed) text length is <= this is treated
 # as "low text" and routed through the OCR fallback.
@@ -118,7 +119,7 @@ def build_success_record(
     bill_id: Any,
     name: str,
     blocks: list[dict],
-    page_count: int,
+    page_count: int | None,
     markdown: str = "",
     ocr_fallback_used: bool = False,
     extracted_at: Optional[str] = None,
@@ -143,8 +144,9 @@ def build_success_record(
     }
 
 
-def build_failed_record(*, bill_id: Any, name: str, error: str,
-                        extracted_at: Optional[str] = None) -> dict:
+def build_failed_record(
+    *, bill_id: Any, name: str, error: str, extracted_at: Optional[str] = None
+) -> dict:
     """Assemble a versioned failed extraction record."""
     return {
         "schema_version": EXTRACTION_SCHEMA_VERSION,
@@ -318,13 +320,17 @@ def _run_tesseract_hebrew(image_path: Path, timeout: int = 120) -> str:
     """Run Tesseract Hebrew OCR on ``image_path`` and return stdout text."""
     result = subprocess.run(
         ["tesseract", str(image_path), "stdout", "-l", "heb", "--psm", "6"],
-        capture_output=True, text=True, timeout=timeout, check=True,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=True,
     )
     return result.stdout
 
 
-def extract_pdf_bytes(pdf_bytes: bytes, *, bill_id: Any, name: str,
-                     document_timeout: int = 120) -> dict:
+def extract_pdf_bytes(
+    pdf_bytes: bytes, *, bill_id: Any, name: str, document_timeout: int = 120
+) -> dict:
     """Extract a single bill PDF into a versioned success/failure record.
 
     Behavior mirrors the v1 notebook:
@@ -347,21 +353,26 @@ def extract_pdf_bytes(pdf_bytes: bytes, *, bill_id: Any, name: str,
 
         # 1. Low-text page detection
         pdf = pdfium.PdfDocument(pdf_bytes)
-        page_texts = [pdf[i].get_textpage().get_text_range() or "" for i in range(len(pdf))]
+        page_texts = [
+            pdf[i].get_textpage().get_text_range() or "" for i in range(len(pdf))
+        ]
         pdf.close()
         low_text_pages = [
-            i + 1 for i, t in enumerate(page_texts)
+            i + 1
+            for i, t in enumerate(page_texts)
             if len(re.sub(r"\s+", "", t)) <= LOW_TEXT_CHAR_THRESHOLD
         ]
 
         # 2. Docling extraction
         options = PdfPipelineOptions(do_ocr=False, document_timeout=document_timeout)
         options.heading_hierarchy_options.enabled = True
-        converter = DocumentConverter(format_options={
-            InputFormat.PDF: PdfFormatOption(
-                pipeline_options=options, backend=PyPdfiumDocumentBackend
-            )
-        })
+        converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=options, backend=PyPdfiumDocumentBackend
+                )
+            }
+        )
         doc = converter.convert(
             DocumentStream(name=f"{bill_id}.pdf", stream=BytesIO(pdf_bytes))
         ).document
@@ -385,13 +396,19 @@ def extract_pdf_bytes(pdf_bytes: bytes, *, bill_id: Any, name: str,
             if is_heading:
                 headings = headings[: max(0, depth - 1)] + [text]
 
-            blocks.append({
-                "kind": "heading" if is_heading else ("table" if "table" in label else "text"),
-                "text": text,
-                "page_no": page_no,
-                "heading_path": headings.copy(),
-                "source": "docling",
-            })
+            blocks.append(
+                {
+                    "kind": (
+                        "heading"
+                        if is_heading
+                        else ("table" if "table" in label else "text")
+                    ),
+                    "text": text,
+                    "page_no": page_no,
+                    "heading_path": headings.copy(),
+                    "source": "docling",
+                }
+            )
 
         # 3. OCR fallback for low-text pages
         ocr_used = False
@@ -406,13 +423,15 @@ def extract_pdf_bytes(pdf_bytes: bytes, *, bill_id: Any, name: str,
                         ocr_text = _run_tesseract_hebrew(img_path)
                         if ocr_text.strip():
                             blocks = [b for b in blocks if b["page_no"] != p]
-                            blocks.append({
-                                "kind": "text",
-                                "text": ocr_text.strip(),
-                                "page_no": p,
-                                "heading_path": [],
-                                "source": "ocr",
-                            })
+                            blocks.append(
+                                {
+                                    "kind": "text",
+                                    "text": ocr_text.strip(),
+                                    "page_no": p,
+                                    "heading_path": [],
+                                    "source": "ocr",
+                                }
+                            )
                             ocr_used = True
                 except Exception:
                     pass
@@ -431,6 +450,91 @@ def extract_pdf_bytes(pdf_bytes: bytes, *, bill_id: Any, name: str,
         return build_failed_record(bill_id=bill_id, name=name, error=str(e))
 
 
+def extract_document_bytes(
+    document_bytes: bytes,
+    *,
+    document_format: str,
+    bill_id: Any,
+    name: str,
+    document_timeout: int = 120,
+) -> dict:
+    """Extract one PDF, DOCX, or DOC into the shared record schema.
+
+    PDFs retain the selective PyPdfium/Tesseract Hebrew OCR path. DOCX, DOC,
+    and RTF are delegated directly to Docling; Docling's legacy Office formats
+    require LibreOffice, and a missing backend is captured as a per-document failure.
+    """
+    document_format = str(document_format or "").lower().strip()
+    if document_format == "pdf":
+        return extract_pdf_bytes(
+            document_bytes,
+            bill_id=bill_id,
+            name=name,
+            document_timeout=document_timeout,
+        )
+    if document_format not in {"docx", "doc", "rtf"}:
+        return build_failed_record(
+            bill_id=bill_id,
+            name=name,
+            error=f"unsupported document format: {document_format!r}",
+        )
+    try:
+        from docling.datamodel.base_models import DocumentStream
+        from docling.document_converter import DocumentConverter
+
+        doc = (
+            DocumentConverter()
+            .convert(
+                DocumentStream(
+                    name=f"{bill_id}.{document_format}", stream=BytesIO(document_bytes)
+                )
+            )
+            .document
+        )
+        markdown = doc.export_to_markdown()
+        blocks, headings = [], []
+        for item, depth in doc.iterate_items():
+            label = str(getattr(item, "label", "")).lower()
+            text = (
+                item.export_to_markdown(doc=doc).strip()
+                if "table" in label
+                else str(getattr(item, "text", "")).strip()
+            )
+            if not text:
+                continue
+            prov = list(getattr(item, "prov", []) or [])
+            page_no = getattr(prov[0], "page_no", None) if prov else None
+            is_heading = "title" in label or "section_header" in label
+            if is_heading:
+                headings = headings[: max(0, depth - 1)] + [text]
+            blocks.append(
+                {
+                    "kind": (
+                        "heading"
+                        if is_heading
+                        else ("table" if "table" in label else "text")
+                    ),
+                    "text": text,
+                    "page_no": page_no,
+                    "heading_path": headings.copy(),
+                    "source": "docling",
+                }
+            )
+        pages = getattr(doc, "pages", None)
+        page_count = len(pages) if pages is not None else None
+        return build_success_record(
+            bill_id=bill_id,
+            name=name,
+            blocks=blocks,
+            page_count=page_count,
+            markdown=markdown,
+        )
+    except (
+        Exception
+    ) as error:  # noqa: BLE001 - preserve per-document failure for reruns
+        return build_failed_record(bill_id=bill_id, name=name, error=str(error))
+
+
 def extract_bill(row: dict, cache_dir: Path | str) -> dict:
     """Extract a single bill row, using and updating the on-disk cache.
 
@@ -445,8 +549,6 @@ def extract_bill(row: dict, cache_dir: Path | str) -> dict:
     if is_cache_reusable(cache_dir, bill_id):
         return load_record(cache_dir, bill_id)
 
-    record = extract_pdf_bytes(
-        bytes(row["law_pdf_bytes"]), bill_id=bill_id, name=name
-    )
+    record = extract_pdf_bytes(bytes(row["law_pdf_bytes"]), bill_id=bill_id, name=name)
     write_record(cache_dir, record)
     return record
