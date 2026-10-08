@@ -34,8 +34,12 @@ dim_bills + dim_bill_documents
 ```
 
 Every stage reads prior Parquet and writes new Parquet, so you can stop and
-resume. The paid cells (distill, embed, synthesize) skip rows already present in
-their checkpoint, keyed by content, and changing clustering parameters re-reads
+resume. After clustering, the notebook presents candidate-level noise, membership,
+and cross-bill composition diagnostics plus representative bullets before any
+paid synthesis. Leave `CHOSEN_CANDIDATE=None` to remain in this exploratory,
+no-label state. Distillation records every chunk in `distill_status.parquet`: successful
+bullets and explicit `<NO_QUOTES/>` results are complete, while malformed or
+failed API responses remain retryable. Changing clustering parameters re-reads
 saved embeddings instead of re-calling Gemini.
 
 ## Checkpoint layout
@@ -49,6 +53,7 @@ dataset/bill_concepts/runs/full-v2/
   extraction_documents.parquet
   extraction_blocks.parquet
   chunks.parquet
+  distill_status.parquet
   bullets.parquet
   embedding_inputs.parquet
   embeddings.parquet

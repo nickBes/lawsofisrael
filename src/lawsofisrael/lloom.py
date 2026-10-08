@@ -47,16 +47,22 @@ def chat_count_tokens(text: str) -> int:
     return len(_chat_encoding().encode(text))
 
 
-def make_embedding_tokenizer(embed_url: str, api_key: str, timeout: int = 30) -> Callable[[str], list]:
+def make_embedding_tokenizer(
+    embed_url: str, api_key: str, timeout: int = 30
+) -> Callable[[str], list]:
     """Return a function that tokenizes text via the llama.cpp /tokenize endpoint.
 
     Used as the embedding model's token counter so budgeting matches the local
     bge-m3 server rather than the chat tokenizer.
     """
+
     def tokenize(text: str) -> list:
         headers = {"Authorization": f"Bearer {api_key}"}
         r = requests.post(
-            f"{embed_url}/tokenize", json={"content": text}, headers=headers, timeout=timeout
+            f"{embed_url}/tokenize",
+            json={"content": text},
+            headers=headers,
+            timeout=timeout,
         )
         r.raise_for_status()
         return r.json()["tokens"]
@@ -90,7 +96,9 @@ def build_chat_model(
         return AsyncOpenAI(base_url=base_url, api_key=key, max_retries=5, timeout=120.0)
 
     chat_model = OpenAIModel(
-        model_config["name"], api_key, setup_fn=chat_setup,
+        model_config["name"],
+        api_key,
+        setup_fn=chat_setup,
         context_window=model_config["context_window"],
         rate_limit=model_config["rate_limit"],
         cost=cost,
@@ -128,8 +136,11 @@ def build_embed_model(
         return OpenAI(base_url=f"{embed_url}/v1", api_key=key, timeout=60.0)
 
     embed_model = OpenAIEmbedModel(
-        embed_model_name, api_key=api_key, setup_fn=embed_setup,
-        batch_size=batch_size, cost=(0, 0),
+        embed_model_name,
+        api_key=api_key,
+        setup_fn=embed_setup,
+        batch_size=batch_size,
+        cost=(0, 0),
     )
     tokenize = make_embedding_tokenizer(embed_url, api_key)
     embed_model.count_tokens_fn = lambda _model, text: len(tokenize(text))
@@ -179,11 +190,66 @@ def build_gemini_embed_model(
         return embeddings, tokens
 
     embed_model = OpenAIEmbedModel(
-        model_name, api_key=api_key, setup_fn=embed_setup, fn=embed_fn,
-        batch_size=batch_size, cost=cost,
+        model_name,
+        api_key=api_key,
+        setup_fn=embed_setup,
+        fn=embed_fn,
+        batch_size=batch_size,
+        cost=cost,
     )
     embed_model.count_tokens_fn = lambda _model, text: chat_count_tokens(text)
     return embed_model
+
+
+def install_fence_tolerant_json_parser() -> None:
+    """Patch LLooM's response parser to accept bare or fenced JSON reliably.
+
+    LLooM currently extracts an object substring then tries ``yaml.safe_load``.
+    Gemini often emits valid JSON in Markdown fences; parse that JSON directly
+    first, falling back to YAML only for non-JSON-compatible legacy responses.
+    """
+    import json
+
+    import yaml
+    import text_lloom.concept_induction as concept_induction
+
+    if getattr(concept_induction.json_load, "_lawsofisrael_json_parser", False):
+        return
+
+    def json_load(response, top_level_key=None):
+        if response is None:
+            return None
+        if isinstance(response, dict):
+            parsed = response
+        else:
+            text = str(response).strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1] if "\n" in text else ""
+                if text.rstrip().endswith("```"):
+                    text = text.rstrip()[:-3].rstrip()
+            start, end = text.find("{"), text.rfind("}")
+            if start < 0 or end < start:
+                return None
+            candidate = text[start : end + 1]
+            parsed = None
+            for parser in (json.loads, yaml.safe_load):
+                try:
+                    value = parser(candidate)
+                except (
+                    Exception
+                ):  # noqa: BLE001 - preserve LLooM's parse-as-none contract
+                    continue
+                if isinstance(value, dict):
+                    parsed = value
+                    break
+            if parsed is None:
+                return None
+        return (
+            parsed.get(top_level_key, parsed) if top_level_key is not None else parsed
+        )
+
+    json_load._lawsofisrael_json_parser = True
+    concept_induction.json_load = json_load
 
 
 def make_lloom_session(
@@ -223,7 +289,11 @@ def make_lloom_session(
     )
 
     return lloom(
-        df[[id_col, text_col]], text_col=text_col, id_col=id_col,
-        distill_model=chat_model, cluster_model=embed_model,
-        synth_model=chat_model, score_model=chat_model,
+        df[[id_col, text_col]],
+        text_col=text_col,
+        id_col=id_col,
+        distill_model=chat_model,
+        cluster_model=embed_model,
+        synth_model=chat_model,
+        score_model=chat_model,
     )
