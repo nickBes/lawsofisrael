@@ -1,0 +1,83 @@
+party_id,knesset_num,start,end,kind,note
+likud,16,2003-02-28,2006-01-16,government,Likud ministers left the Sharon government in 2006-01
+shinui,16,2003-02-28,2004-12-04,government,
+jewish_home,16,2003-02-28,2004-11-11,government,NRP
+religious_zionism,16,2003-02-28,2004-06-06,government,National Union ministers dismissed over the disengagement
+labor,16,2005-01-10,2005-11-23,government,
+utj,16,2005-01-10,,government,Agudat Yisrael only; no office-holders until 2005-03-30 (review)
+kadima,16,2005-11-23,,government,
+kadima,17,2006-04-17,,government,"transitional government 30 until 2006-05-04, then government 31"
+labor,17,2006-05-04,,government,
+shas,17,2006-05-04,,government,
+gil,17,2006-05-04,,government,
+yisrael_beiteinu,17,2006-10-30,2008-01-18,government,
+kadima,18,2009-02-24,2009-03-31,government,transitional government 31
+labor,18,2009-02-24,2011-01-19,government,
+shas,18,2009-02-24,,government,
+likud,18,2009-03-31,,government,
+yisrael_beiteinu,18,2009-03-31,,government,
+jewish_home,18,2009-03-31,,government,
+utj,18,2009-03-31,,government,
+independence,18,2011-01-17,,government,
+kadima,18,2012-05-09,2012-07-19,government,ministers data still lists Kadima office-holders until 2012-12 (Dichter); review
+likud,19,2013-02-05,,government,transitional government 32 until 2013-03-18
+shas,19,2013-02-05,2013-03-18,government,transitional government 32
+utj,19,2013-02-05,2013-03-18,government,transitional government 32
+yesh_atid,19,2013-03-18,2014-12-04,government,
+jewish_home,19,2013-03-18,,government,
+hatnua,19,2013-03-18,2014-12-04,government,
+yisrael_beiteinu,19,2014-07-09,,government,before the split its MKs sat in the joint Likud faction
+likud,20,2015-03-31,,government,
+jewish_home,20,2015-03-31,,government,
+yisrael_beiteinu,20,2015-03-31,2015-05-14,government,transitional government 33
+kulanu,20,2015-05-14,,government,
+shas,20,2015-05-14,,government,
+utj,20,2015-05-14,,government,
+yisrael_beiteinu,20,2016-05-30,2018-11-15,government,
+yamina,20,2018-12-30,,government,New Right ministers stayed in government 34
+likud,21,2019-04-30,,government,transitional government 34
+kulanu,21,2019-04-30,,government,transitional government 34
+shas,21,2019-04-30,,government,transitional government 34
+utj,21,2019-04-30,,government,transitional government 34
+jewish_home,21,2019-04-30,,government,transitional government 34
+likud,22,2019-10-03,,government,transitional government 34
+shas,22,2019-10-03,,government,transitional government 34
+utj,22,2019-10-03,,government,transitional government 34
+yamina,22,2019-11-12,,government,Bennett appointed defence minister
+jewish_home,22,2019-10-03,,government,transitional government 34
+likud,23,2020-03-16,,government,transitional government 34 until 2020-05-17
+shas,23,2020-03-16,,government,
+utj,23,2020-03-16,,government,
+yamina,23,2020-03-16,2020-05-17,government,transitional government 34
+national_unity,23,2020-05-17,,government,
+labor,23,2020-05-17,,government,Peretz / Shmuli only; review
+gesher,23,2020-05-17,,government,
+new_hope,23,2020-05-17,2020-12-23,government,Derech Eretz; end date uncertain (review)
+jewish_home,23,2020-07-14,,government,Rafi Peretz
+likud,24,2021-04-06,2021-06-13,government,transitional government 35
+shas,24,2021-04-06,2021-06-13,government,transitional government 35
+utj,24,2021-04-06,2021-06-13,government,transitional government 35
+national_unity,24,2021-04-06,,government,
+yamina,24,2021-06-13,,government,
+yesh_atid,24,2021-06-13,,government,
+labor,24,2021-06-13,,government,
+yisrael_beiteinu,24,2021-06-13,,government,
+new_hope,24,2021-06-13,,government,
+meretz,24,2021-06-13,,government,
+raam,24,2021-06-13,,government,coalition member without ministers
+yesh_atid,25,2022-11-15,2022-12-29,government,transitional government 36
+national_unity,25,2022-11-15,2022-12-29,government,transitional government 36
+labor,25,2022-11-15,2022-12-29,government,transitional government 36
+yisrael_beiteinu,25,2022-11-15,2022-12-29,government,transitional government 36
+raam,25,2022-11-15,2022-12-29,government,transitional government 36
+likud,25,2022-12-29,,government,
+shas,25,2022-12-29,2025-07-23,government,
+shas,25,2025-07-23,,outside_support,"ministers resigned over the draft law, party stayed in the coalition (review)"
+utj,25,2022-12-29,2025-07-15,government,left over the draft law; ministers data still shows UTJ office-holders after this (review)
+religious_zionism,25,2022-12-29,,government,
+otzma,25,2022-12-29,2025-01-21,government,left over the Gaza ceasefire
+otzma,25,2025-03-18,,government,returned
+noam,25,2022-12-29,2025-03-26,government,end taken from the ministers data (review)
+national_unity,25,2023-10-12,2024-06-12,government,wartime emergency government
+new_hope,25,2024-03-13,2024-03-26,government,Sa'ar stayed in the emergency government after the split
+new_hope,25,2024-09-30,,government,

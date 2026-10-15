@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: מקור הנתונים / Data source (Knesset API)
+    url: https://main.knesset.gov.il/Activity/Info/pages/databases.aspx
+    about: הנתונים נאספו מה-API הרשמי של הכנסת / Data comes from the official Knesset API

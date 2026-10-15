@@ -18,6 +18,7 @@ dist/
 # by request and holds every raw API response. The durable, portable outputs are
 # prepared/*.parquet (final tables) and raw_snapshot/ (collection-stage state).
 dataset/knesset_votes/.http_cache*
+scripts/.http_cache*
 
 # Collection-stage snapshot: the raw API payloads behind the prepared tables,
 # one gzipped JSON per stage. Large but portable -- copy this directory to
@@ -39,3 +40,11 @@ dataset/knesset_votes/prepared_sample/
 dataset/bill_concepts/raw/
 dataset/bill_concepts/cache/
 dataset/bill_concepts/runs/
+.agents
+.agent
+.kiro
+
+# Web app: data copied by web/scripts/copy-data.mjs, plus build output and deps
+web/public/data/
+web/node_modules
+web/dist

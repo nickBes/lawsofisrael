@@ -1,0 +1,14 @@
+name: "💡 רעיון לשיפור / Feature idea"
+description: הצעה לתכונה, עמוד או תצוגה חדשים / Suggest a new feature, page or view
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: "מה הרעיון? / What's the idea?"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: "איזו שאלה זה יעזור לענות עליה? / What question would it help answer?"

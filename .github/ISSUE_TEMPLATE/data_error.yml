@@ -1,0 +1,22 @@
+name: "📊 טעות בנתונים / Data error"
+description: הצבעה, חבר כנסת או הצעת חוק מוצגים לא נכון / A vote, MK or bill is shown incorrectly
+labels: [data]
+body:
+  - type: input
+    id: link
+    attributes:
+      label: "קישור לחבר הכנסת / להצבעה / להצעת החוק / Link to the MK, vote or bill"
+      placeholder: https://...
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: "מה לא נכון? / What's wrong?"
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: "מקור לנתון הנכון / Source for the correct data"
+      description: למשל קישור לאתר הכנסת או לפרוטוקול / e.g. Knesset site or protocol link

@@ -1047,6 +1047,32 @@ def build_analysis(
     }
 
 
+def build_dim_bullets(
+    bullets: pd.DataFrame, chunks: pd.DataFrame, marts: dict[str, pd.DataFrame]
+) -> pd.DataFrame:
+    """Bullet text for every bullet the concept marts reference (site evidence): bullet_row_id, bill_id, bullet."""
+    bbc, concepts = marts["bridge_bill_concepts"], marts["dim_concepts"]
+    ids = set(bbc["primary_evidence_bullet_id"].dropna())
+    for lists in (bbc["bullet_ids"], concepts["representative_bullet_ids"]):
+        for v in lists.dropna():
+            ids.update(list(v))
+    out = bullets.loc[
+        bullets["bullet_row_id"].isin(ids), ["bullet_row_id", "chunk_id", "bullet"]
+    ].merge(chunks[["chunk_id", "bill_id"]], on="chunk_id", how="left", validate="many_to_one")
+    missing = ids - set(out["bullet_row_id"])
+    if missing or out["bill_id"].isna().any() or out["bullet_row_id"].duplicated().any():
+        raise ValueError(
+            f"dim_bullets: {len(missing)} unresolved ids, {int(out['bill_id'].isna().sum())} without bill, "
+            f"{int(out['bullet_row_id'].duplicated().sum())} duplicates"
+        )
+    out["bill_id"] = out["bill_id"].astype(bbc["bill_id"].dtype)
+    return (
+        out[["bullet_row_id", "bill_id", "bullet"]]
+        .sort_values("bullet_row_id", kind="stable")
+        .reset_index(drop=True)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Integrity checks
 # ---------------------------------------------------------------------------

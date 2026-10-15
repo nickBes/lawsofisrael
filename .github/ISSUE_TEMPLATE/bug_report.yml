@@ -1,0 +1,29 @@
+name: "🐞 באג באתר / Bug report"
+description: משהו באתר לא עובד או נראה שבור / Something on the site is broken
+labels: [bug]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: "כתובת העמוד / Page URL"
+      placeholder: https://...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "מה ציפיתם לראות? / What did you expect?"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "מה ראיתם בפועל? / What did you see?"
+      description: צילום מסך יעזור / A screenshot helps
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: "דפדפן ומכשיר / Browser and device"
+      placeholder: Chrome 130, Android
