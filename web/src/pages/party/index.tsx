@@ -1,9 +1,10 @@
-import { Link, useParams } from "react-router"
+import { Link, useNavigate, useParams } from "react-router"
 import { ActivityIcon, GavelIcon, HandshakeIcon, LandmarkIcon, MagnetIcon, ScrollTextIcon, UsersIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/app-shell"
 import { Caveat } from "@/components/caveat"
 import { CONCEPT_EMPTY, ConceptCaveat } from "@/components/concept-caveat"
+import { ConceptPies } from "@/components/concept-pies"
 import { KnessetSelect, kParam, knessetLabel, useKnessetOrAll } from "@/components/knesset-select"
 import { MkAvatar } from "@/components/mk-avatar"
 import { QueryState } from "@/components/query-state"
@@ -15,7 +16,7 @@ import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { BlurFade } from "@/components/ui/blur-fade"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Progress } from "@/components/ui/progress"
 import { ScrollProgress } from "@/components/ui/scroll-progress"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -75,6 +76,7 @@ function PartyBody({ id, k }: { id: string; k: number | null }) {
   const divisive = usePartyDivisive(id, k)
   const bills = usePartyBills(id, k)
   const members = usePartyMembers(id, k)
+  const navigate = useNavigate()
   const kp = kpi.data?.[0]
   const pct = (x: number | null) => (x == null ? undefined : x * 100)
 
@@ -157,31 +159,14 @@ function PartyBody({ id, k }: { id: string; k: number | null }) {
           <CardHeader>
             <CardTitle>עמדת המפלגה לפי מושג</CardTitle>
             <CardDescription>
-              בכמה הצבעות רוב חברי המפלגה הצביעו בעד או נגד הצעות חוק עם כל מושג, בקריאות טרומית, ראשונה ושלישית {knessetLabel(k)}.
+              על אילו מושגים הלכו הקולות בעד ונגד של חברי המפלגה, בקריאות טרומית, ראשונה ושלישית {knessetLabel(k)}. בלי נמנעים, 50 המושגים עם הכי הרבה הצבעות (5 לפחות).
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <ConceptCaveat />
             <QueryState query={concepts} className="h-80" {...CONCEPT_EMPTY}>
               {(rows) => (
-                <ItemGroup className="grid gap-2 md:grid-cols-2">
-                  {rows.map((c) => (
-                    <Item key={c.concept_id} variant="outline" size="sm" asChild>
-                      <Link to={`/concept/${c.concept_id}`}>
-                        <ItemContent className="min-w-0">
-                          <ItemTitle className="line-clamp-2">{c.concept_label}</ItemTitle>
-                          <SplitBar
-                            legend
-                            segments={[
-                              { key: "for", label: "בעד", value: c.n_for, color: CHOICE_COLOR.for },
-                              { key: "against", label: "נגד", value: c.n_against, color: CHOICE_COLOR.against },
-                            ]}
-                          />
-                        </ItemContent>
-                      </Link>
-                    </Item>
-                  ))}
-                </ItemGroup>
+                <ConceptPies rows={rows} onSelect={(c) => navigate(`/concept/${c.concept_id}`)} />
               )}
             </QueryState>
           </CardContent>

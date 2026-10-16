@@ -1,3 +1,4 @@
+import type { ConceptPieRow } from "@/components/concept-pies"
 import { useSql } from "@/db/useSql"
 
 export const MK_SERVICE_SQL = /* sql */ `
@@ -51,16 +52,20 @@ py AS (
 SELECT year::INTEGER AS year, max(cast_ / eligible) FILTER (member_id = ?) AS mk, median(cast_ / eligible) AS party_median
 FROM py GROUP BY year ORDER BY year`
 
-// voting by concept (generic legal mechanics left out), and agreement with own party on the same votes
+// MK for-share vs own party's for-share (all its MKs' ballots, the MK included) on the same votes, by concept;
+// generic legal mechanics left out. shortcut: >= 5 votes and the 50 most-voted concepts; revisit when the full concept run lands
 export const MK_CONCEPTS_SQL = /* sql */ `
-SELECT c.concept_id, c.concept_label,
-       count(*) FILTER (b.choice = 'for') AS n_for, count(*) FILTER (b.choice = 'against') AS n_against,
-       avg((b.choice = pv.position)::INT) FILTER (pv.position IN ('for','against')) AS agreement_with_party
+SELECT c.concept_id, c.concept_label, count(*) AS n_votes,
+       avg((b.choice = 'for')::INT) AS a_share,
+       count(*) FILTER (b.choice = 'for') AS a_for, count(*) FILTER (b.choice = 'against') AS a_against,
+       sum(pv.n_for) / sum(pv.n_for + pv.n_against) AS b_share,
+       sum(pv.n_for)::BIGINT AS b_for, sum(pv.n_against)::BIGINT AS b_against
 FROM ballots_x b JOIN bridge_bill_concepts bc USING (bill_id) JOIN concepts c USING (concept_id)
-LEFT JOIN party_vote pv USING (vote_id, party_id)
+JOIN party_vote pv USING (vote_id, party_id)
 WHERE b.member_id = ? AND b.knesset_num = coalesce(?::INTEGER, b.knesset_num) AND b.stage IN ('preliminary','first','third')
   AND b.choice IN ('for','against') AND NOT c.is_generic
-GROUP BY ALL ORDER BY count(*) DESC, c.concept_label LIMIT 12`
+GROUP BY ALL HAVING count(*) >= 5
+ORDER BY n_votes DESC, c.concept_label LIMIT 50`
 
 export const MK_CONCEPT_VOTES_SQL = /* sql */ `
 SELECT v.vote_id, v.vote_date::VARCHAR AS vote_date, v.item_title, s.stage, b.choice, pv.position, db.bullet
@@ -143,8 +148,7 @@ export const useMkYearly = (id: number, k: number | null) =>
 export const useMkParticipation = (id: number, k: number | null) =>
   useSql<{ year: number; mk: number | null; party_median: number }>("mkParticipation", MK_PARTICIPATION_SQL, [id, k, id])
 export const useMkConcepts = (id: number, k: number | null) =>
-  useSql<{ concept_id: string; concept_label: string; n_for: number; n_against: number; agreement_with_party: number | null }>(
-    "mkConcepts", MK_CONCEPTS_SQL, [id, k])
+  useSql<ConceptPieRow>("mkConcepts", MK_CONCEPTS_SQL, [id, k])
 export const useMkConceptVotes = (id: number, k: number | null, concept: string) =>
   useSql<VoteLine & { bullet: string | null }>("mkConceptVotes", MK_CONCEPT_VOTES_SQL, [concept, id, k], concept !== "")
 export const useMkAgainstParty = (id: number, k: number | null) => useSql<VoteLine>("mkAgainstParty", MK_AGAINST_PARTY_SQL, [id, k])

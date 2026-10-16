@@ -7,26 +7,25 @@ import { PageHeader } from "@/components/app-shell"
 import { Caveat } from "@/components/caveat"
 import { ChoiceBadge } from "@/components/choice-badge"
 import { CONCEPT_EMPTY, ConceptCaveat, EVIDENCE_LABEL, EvidenceLabel } from "@/components/concept-caveat"
+import { ConceptPies } from "@/components/concept-pies"
 import { KnessetSelect, kParam, knessetLabel, useKnessetOrAll } from "@/components/knesset-select"
 import { QueryState } from "@/components/query-state"
 import { ShowMore } from "@/components/show-more"
-import { SplitBar } from "@/components/split-bar"
 import { StageBadge } from "@/components/stage-badge"
 import { MkAvatar } from "@/components/mk-avatar"
 import { StatCard } from "@/components/stat-card"
 import { Badge } from "@/components/ui/badge"
 import { BlurFade } from "@/components/ui/blur-fade"
 import { ScrollProgress } from "@/components/ui/scroll-progress"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Progress } from "@/components/ui/progress"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { partyColor } from "@/db/shared"
-import { CHOICE_COLOR, choiceChartConfig, fmtDate, fmtNum, fmtPct, pct100, pctTick } from "@/lib/labels"
+import { choiceChartConfig, fmtDate, fmtNum, fmtPct, pct100, pctTick } from "@/lib/labels"
 import {
   useMkAgainstParty,
   useMkBills,
@@ -240,39 +239,18 @@ function MkBody({ id, k, ministerInK }: { id: number; k: number | null; minister
           <CardHeader>
             <CardTitle>מושגים שהצביע עליהם</CardTitle>
             <CardDescription>
-              ההצבעות שלו בעד ונגד הצעות חוק לפי מושג, בקריאות טרומית, ראשונה ושלישית, וכמה פעמים הצביע כמו מפלגתו. לחצו על מושג לרשימת ההצבעות.
+              על אילו מושגים הלכו ההצבעות שלו בעד ונגד הצעות חוק, בקריאות טרומית, ראשונה ושלישית. בלי נמנעים, 50 המושגים עם הכי הרבה הצבעות (5 לפחות). לחצו על מושג לרשימת ההצבעות.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <ConceptCaveat />
             <QueryState query={concepts} className="h-80" {...CONCEPT_EMPTY}>
               {(rows) => (
-                <ItemGroup className="grid gap-2 md:grid-cols-2">
-                  {rows.map((c) => (
-                    <Item key={c.concept_id} variant="outline" size="sm">
-                      <ItemContent className="min-w-0">
-                        <ItemTitle className="line-clamp-none">
-                          <Button
-                            variant="link"
-                            className="h-auto shrink p-0 text-start whitespace-normal"
-                            onClick={() => setSheetConcept({ id: c.concept_id, label: c.concept_label })}
-                          >
-                            {c.concept_label}
-                          </Button>
-                        </ItemTitle>
-                        <SplitBar
-                          segments={[
-                            { key: "for", label: "בעד", value: c.n_for, color: CHOICE_COLOR.for },
-                            { key: "against", label: "נגד", value: c.n_against, color: CHOICE_COLOR.against },
-                          ]}
-                        />
-                        <ItemDescription>
-                          {fmtNum(c.n_for)} בעד · {fmtNum(c.n_against)} נגד · הסכמה עם המפלגה {fmtPct(c.agreement_with_party)}
-                        </ItemDescription>
-                      </ItemContent>
-                    </Item>
-                  ))}
-                </ItemGroup>
+                <ConceptPies
+                  rows={rows}
+                  compare="המפלגה באותן הצבעות"
+                  onSelect={(c) => setSheetConcept({ id: c.concept_id, label: c.concept_label })}
+                />
               )}
             </QueryState>
           </CardContent>

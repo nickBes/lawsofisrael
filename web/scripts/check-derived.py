@@ -104,6 +104,53 @@ run("VOTE_EVIDENCE_SQL", vote16, expect_rows=True)
 run("VOTE_EVIDENCE_SQL", 46699)
 run("PARTY_CONCEPTS_SQL", "likud", 17)
 run("PARTY_CONCEPTS_SQL", "likud", 25)
+
+# concept pies: [id, label, n_votes, a_share, a_for, a_against, b_share, b_for, b_against]
+def dumbbell(name, *params):
+    rows = run(name, *params)
+    n = [r[2] for r in rows]
+    assert n == sorted(n, reverse=True), f"{name}{params}: not sorted by votes"
+    assert len(rows) <= 50, f"{name}{params}: over the limit"
+    for r in rows:
+        assert r[2] >= 5, f"{name}: under the 5-vote threshold {r}"
+        assert abs(r[3] - r[4] / (r[4] + r[5])) < 1e-9 and abs(r[6] - r[7] / (r[7] + r[8])) < 1e-9, f"{name}: share vs counts {r}"
+        assert r[7] >= r[4] and r[8] >= r[5], f"{name}: comparison side must contain the subject's ballots {r}"
+    return rows
+
+assert not dumbbell("MK_CONCEPTS_SQL", 771, 25), "mock has no K25 concepts: expected the Empty state"
+for k in (17, None):
+    rows = dumbbell("MK_CONCEPTS_SQL", 206, k)
+    assert rows and all(r[2] == r[4] + r[5] for r in rows), f"MK 206 k={k}: one ballot per vote"
+    assert any(r[5] for r in rows), f"MK 206 k={k}: no against ballots kept, the chart's left side would be empty"
+    old = {r[0]: (r[1], r[2]) for r in con.execute("""
+      SELECT c.concept_id, count(*) FILTER (b.choice = 'for'), count(*) FILTER (b.choice = 'against')
+      FROM ballots_x b JOIN bridge_bill_concepts bc USING (bill_id) JOIN concepts c USING (concept_id)
+      WHERE b.member_id = ? AND b.knesset_num = coalesce(?::INTEGER, b.knesset_num) AND b.stage IN ('preliminary','first','third')
+        AND b.choice IN ('for','against') AND NOT c.is_generic GROUP BY 1""", [206, k]).fetchall()}
+    assert all(old[r[0]] == (r[4], r[5]) for r in rows), f"MK 206 k={k}: counts differ from the old per-concept counts"
+    if k == 17:
+        party_side = con.execute("""
+          WITH mv AS (SELECT b.vote_id, b.party_id FROM ballots_x b JOIN bridge_bill_concepts bc USING (bill_id)
+            WHERE bc.concept_id = ? AND b.member_id = 206 AND b.knesset_num = 17 AND b.choice IN ('for','against')
+              AND b.stage IN ('preliminary','first','third'))
+          SELECT count(*) FILTER (o.choice = 'for'), count(*) FILTER (o.choice = 'against') FROM ballots_x o JOIN mv USING (vote_id, party_id)
+          """, [rows[0][0]]).fetchone()
+        assert party_side == (rows[0][7], rows[0][8]), f"MK dumbbell party side {party_side} vs {rows[0]}"
+    print(f"  MK 206 k={k} dumbbell top:", rows[0][1][:40], f"{rows[0][3]:.2f} vs {rows[0][6]:.2f} n={rows[0][2]}")
+assert dumbbell("PARTY_CONCEPTS_SQL", "likud", 17)
+assert not dumbbell("PARTY_CONCEPTS_SQL", "likud", 25), "mock has no K25 concepts"
+pc = dumbbell("PARTY_CONCEPTS_SQL", "likud", None)
+assert pc and any(r[5] for r in pc), "likud all: no against ballots kept"
+for r in pc[:3]:
+    cp = next(x for x in run("CONCEPT_PARTIES_SQL", r[0]) if x[0] == "likud")
+    assert (cp[4], cp[5], cp[6]) == (r[2], r[4], r[5]) and abs(cp[3] - r[3]) < 1e-9, f"party dumbbell vs concept page: {cp} {r}"
+k_side = con.execute("""
+  WITH pvotes AS (SELECT DISTINCT b.vote_id FROM ballots_x b JOIN bridge_bill_concepts bc USING (bill_id)
+    WHERE bc.concept_id = ? AND b.party_id = 'likud' AND b.choice IN ('for','against') AND b.stage IN ('preliminary','first','third'))
+  SELECT count(*) FILTER (choice = 'for'), count(*) FILTER (choice = 'against')
+  FROM ballots_x WHERE vote_id IN (SELECT vote_id FROM pvotes)""", [pc[0][0]]).fetchone()
+assert k_side == (pc[0][7], pc[0][8]), f"party dumbbell Knesset side {k_side} vs {pc[0]}"
+print("  likud all dumbbell top:", pc[0][1][:40], f"{pc[0][3]:.2f} vs {pc[0][6]:.2f} n={pc[0][2]}")
 # changed non-concept queries
 yearly = run("MK_YEARLY_SQL", 771, 25, expect_rows=True)
 print("  MK 771 K25 yearly for/against:", [(r[0], r[1], r[2]) for r in yearly])

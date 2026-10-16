@@ -1,3 +1,4 @@
+import type { ConceptPieRow } from "@/components/concept-pies"
 import { useSql } from "@/db/useSql"
 
 export const PARTY_SQL = /* sql */ `
@@ -26,15 +27,21 @@ SELECT (SELECT count(DISTINCT member_id) FROM mp) AS n_mks, (SELECT sum(n_ballot
        kp.cohesion, kp.sided_with_coalition
 FROM kp`
 
-// party position (majority of its MKs) on votes by concept; generic legal mechanics left out
+// party for-share (its MKs' ballots) vs the whole Knesset's pooled for-share on the same votes, by concept;
+// generic legal mechanics left out. shortcut: >= 5 votes and the 50 most-voted concepts; revisit when the full concept run lands
 export const PARTY_CONCEPTS_SQL = /* sql */ `
-SELECT c.concept_id, c.concept_label,
-       count(*) FILTER (pv.position = 'for') AS n_for, count(*) FILTER (pv.position = 'against') AS n_against
-FROM party_vote pv JOIN votes v USING (vote_id) JOIN vote_stage s USING (vote_id)
+WITH kv AS (SELECT vote_id, sum(n_for) AS k_for, sum(n_against) AS k_against FROM party_vote GROUP BY vote_id)
+SELECT c.concept_id, c.concept_label, count(*) AS n_votes,
+       sum(pv.n_for) / sum(pv.n_for + pv.n_against) AS a_share,
+       sum(pv.n_for)::BIGINT AS a_for, sum(pv.n_against)::BIGINT AS a_against,
+       sum(kv.k_for) / sum(kv.k_for + kv.k_against) AS b_share,
+       sum(kv.k_for)::BIGINT AS b_for, sum(kv.k_against)::BIGINT AS b_against
+FROM party_vote pv JOIN votes v USING (vote_id) JOIN vote_stage s USING (vote_id) JOIN kv USING (vote_id)
 JOIN bridge_bill_concepts bc USING (bill_id) JOIN concepts c USING (concept_id)
 WHERE pv.party_id = ? AND pv.knesset_num = coalesce(?::INTEGER, pv.knesset_num) AND s.stage IN ('preliminary','first','third')
-  AND pv.position IN ('for','against') AND NOT c.is_generic
-GROUP BY ALL ORDER BY count(*) DESC, c.concept_label LIMIT 12`
+  AND pv.n_for + pv.n_against > 0 AND NOT c.is_generic
+GROUP BY ALL HAVING count(*) >= 5
+ORDER BY n_votes DESC, c.concept_label LIMIT 50`
 
 export const PARTY_DIVISIVE_SQL = /* sql */ `
 SELECT v.vote_id, v.vote_date::VARCHAR AS vote_date, v.item_title, s.stage, pv.n_for, pv.n_against, pv.rice
@@ -71,7 +78,7 @@ export const usePartyKpi = (id: string, k: number | null) =>
   useSql<{ n_mks: number; participation: number | null; cohesion: number | null; sided_with_coalition: number | null }>(
     "partyKpi", PARTY_KPI_SQL, [k, id, id, k])
 export const usePartyConcepts = (id: string, k: number | null) =>
-  useSql<{ concept_id: string; concept_label: string; n_for: number; n_against: number }>("partyConcepts", PARTY_CONCEPTS_SQL, [id, k])
+  useSql<ConceptPieRow>("partyConcepts", PARTY_CONCEPTS_SQL, [id, k])
 export const usePartyDivisive = (id: string, k: number | null) =>
   useSql<{ vote_id: number; vote_date: string; item_title: string; stage: string; n_for: number; n_against: number; rice: number }>(
     "partyDivisive", PARTY_DIVISIVE_SQL, [id, k])
