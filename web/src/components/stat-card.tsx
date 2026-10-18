@@ -31,6 +31,7 @@ export function StatCard({
   accent?: string // CSS colour for the icon chip, e.g. "var(--chart-2)"
 }) {
   const text = value == null ? "—" : typeof value === "number" ? format(value) : value
+  const [hintOpen, setHintOpen] = React.useState(false)
   return (
     <Card size="sm">
       <CardHeader>
@@ -45,9 +46,17 @@ export function StatCard({
           )}
           {label}
           {hint && (
-            <Tooltip>
+            <Tooltip open={hintOpen} onOpenChange={setHintOpen}>
               {/* 40px touch area below md; the negative margin keeps the layout */}
-              <TooltipTrigger aria-label={`הסבר: ${label}`} className="max-md:-m-3.25 max-md:p-3.25">
+              <TooltipTrigger
+                aria-label={`הסבר: ${label}`}
+                className="max-md:-m-3.25 max-md:p-3.25"
+                // Radix tooltips ignore touch and close on click; open on tap/click instead (tap outside closes)
+                onClick={(e) => {
+                  e.preventDefault()
+                  setHintOpen(true)
+                }}
+              >
                 <InfoIcon className="size-3.5" />
               </TooltipTrigger>
               <TooltipContent className="max-w-64">{hint}</TooltipContent>
