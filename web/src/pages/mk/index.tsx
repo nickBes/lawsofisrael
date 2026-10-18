@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Link, useParams } from "react-router"
+import { Link, useParams, useSearchParams } from "react-router"
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 import { ActivityIcon, HandIcon, HandshakeIcon, HourglassIcon, SplitIcon, SproutIcon, TrophyIcon } from "lucide-react"
 
@@ -9,6 +9,7 @@ import { ChoiceBadge } from "@/components/choice-badge"
 import { CONCEPT_EMPTY, ConceptCaveat, EVIDENCE_LABEL, EvidenceLabel } from "@/components/concept-caveat"
 import { ConceptPies } from "@/components/concept-pies"
 import { KnessetSelect, kParam, knessetLabel, useKnessetOrAll } from "@/components/knesset-select"
+import { Pager, usePage } from "@/components/pager"
 import { QueryState } from "@/components/query-state"
 import { ShowMore } from "@/components/show-more"
 import { StageBadge } from "@/components/stage-badge"
@@ -19,15 +20,15 @@ import { BlurFade } from "@/components/ui/blur-fade"
 import { ScrollProgress } from "@/components/ui/scroll-progress"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Progress } from "@/components/ui/progress"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { partyColor } from "@/db/shared"
-import { choiceChartConfig, fmtDate, fmtNum, fmtPct, pct100, pctTick } from "@/lib/labels"
+import { choiceChartConfig, fmtDate, fmtNum, fmtPct, fmtVotes, pct100, pctTick } from "@/lib/labels"
+import { PAGE_SIZE } from "@/pages/votes/queries"
 import {
-  useMkAgainstParty,
   useMkBills,
   useMkConcepts,
   useMkConceptVotes,
@@ -37,6 +38,7 @@ import {
   useMkService,
   useMkSimilar,
   useMkStints,
+  useMkVotes,
   useMkYearly,
 } from "./queries"
 
@@ -114,7 +116,10 @@ function MkBody({ id, k, ministerInK }: { id: number; k: number | null; minister
   const yearly = useMkYearly(id, k)
   const participation = useMkParticipation(id, k)
   const concepts = useMkConcepts(id, k)
-  const against = useMkAgainstParty(id, k)
+  const [sp, setSp] = useSearchParams()
+  const againstOnly = sp.get("votes") === "against"
+  const page = usePage()
+  const votes = useMkVotes(id, k, againstOnly, page)
   const [excludeBloc, setExcludeBloc] = React.useState(true)
   const similar = useMkSimilar(id, k, excludeBloc)
   const bills = useMkBills(id, k)
@@ -283,12 +288,48 @@ function MkBody({ id, k, ministerInK }: { id: number; k: number | null; minister
       <BlurFade inView>
         <Card>
           <CardHeader>
-            <CardTitle>הצבעות נגד המפלגה</CardTitle>
-            <CardDescription>הצבעות שבהן הצביע הפוך מרוב חברי מפלגתו.</CardDescription>
+            <CardTitle>הצבעות</CardTitle>
+            <CardDescription>
+              {againstOnly
+                ? `הצבעות שבהן הצביע הפוך מרוב חברי מפלגתו ${knessetLabel(k)}, מהחדשה לישנה.`
+                : `כל ההצבעות שלו ${knessetLabel(k)}, מהחדשה לישנה, מול עמדת רוב מפלגתו.`}
+              {votes.data?.[0] && ` ${fmtVotes(votes.data[0].total)}.`}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <QueryState query={against} empty={`לא הצביע נגד מפלגתו ${knessetLabel(k)}`}>
-              {(rows) => <ShowMore items={rows} render={(r) => <VoteLine r={r} />} />}
+          <CardContent className="flex flex-col gap-4">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={againstOnly ? "against" : "all"}
+              onValueChange={(v) =>
+                v &&
+                setSp((prev) => {
+                  if (v === "against") prev.set("votes", "against")
+                  else prev.delete("votes")
+                  prev.delete("page")
+                  return prev
+                }, { preventScrollReset: true })
+              }
+              aria-label="אילו הצבעות להציג"
+            >
+              <ToggleGroupItem value="all">כל ההצבעות</ToggleGroupItem>
+              <ToggleGroupItem value="against">רק נגד המפלגה</ToggleGroupItem>
+            </ToggleGroup>
+            <QueryState
+              query={votes}
+              className="h-96"
+              empty={againstOnly ? `לא הצביע נגד מפלגתו ${knessetLabel(k)}` : `אין הצבעות ${knessetLabel(k)}`}
+            >
+              {(rows) => (
+                <>
+                  <ItemGroup className="gap-2">
+                    {rows.map((r) => (
+                      <VoteLine key={r.vote_id} r={r} />
+                    ))}
+                  </ItemGroup>
+                  <Pager total={rows[0].total} pageSize={PAGE_SIZE} />
+                </>
+              )}
             </QueryState>
           </CardContent>
         </Card>
@@ -421,7 +462,7 @@ function VoteLine({
   r,
   bullet,
 }: {
-  r: { vote_id: number; vote_date: string; item_title: string; stage: string; choice: string; position: string }
+  r: { vote_id: number; vote_date: string; item_title: string; stage: string; choice: string; position: string; against_party?: boolean }
   bullet?: string | null
 }) {
   return (
@@ -432,6 +473,7 @@ function VoteLine({
           <ItemDescription className="flex flex-wrap items-center gap-2">
             <span className="tabular-nums">{fmtDate(r.vote_date)}</span>
             <StageBadge stage={r.stage} />
+            {r.against_party && <Badge variant="outline">נגד המפלגה</Badge>}
           </ItemDescription>
           {bullet && (
             <ItemDescription title={EVIDENCE_LABEL}>

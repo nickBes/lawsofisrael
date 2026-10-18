@@ -1,12 +1,14 @@
-import { Link, useNavigate, useParams } from "react-router"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { ActivityIcon, GavelIcon, HandshakeIcon, LandmarkIcon, MagnetIcon, ScrollTextIcon, UsersIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/app-shell"
 import { Caveat } from "@/components/caveat"
+import { ChoiceBadge } from "@/components/choice-badge"
 import { CONCEPT_EMPTY, ConceptCaveat } from "@/components/concept-caveat"
 import { ConceptPies } from "@/components/concept-pies"
 import { KnessetSelect, kParam, knessetLabel, useKnessetOrAll } from "@/components/knesset-select"
 import { MkAvatar } from "@/components/mk-avatar"
+import { Pager, usePage } from "@/components/pager"
 import { QueryState } from "@/components/query-state"
 import { ShowMore } from "@/components/show-more"
 import { SplitBar } from "@/components/split-bar"
@@ -16,20 +18,22 @@ import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { BlurFade } from "@/components/ui/blur-fade"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Progress } from "@/components/ui/progress"
 import { ScrollProgress } from "@/components/ui/scroll-progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { partyColor } from "@/db/shared"
-import { CHOICE_COLOR, fmtDate, fmtPct } from "@/lib/labels"
+import { fmtDate, fmtPct, fmtVotes, tallySegments } from "@/lib/labels"
+import { PAGE_SIZE } from "@/pages/votes/queries"
 import {
   useParty,
   usePartyBills,
   usePartyCoalition,
   usePartyConcepts,
-  usePartyDivisive,
   usePartyKpi,
   usePartyMembers,
+  usePartyVotes,
 } from "./queries"
 
 const FACES = 8
@@ -73,7 +77,10 @@ function PartyBody({ id, k }: { id: string; k: number | null }) {
   const coalition = usePartyCoalition(id, k)
   const kpi = usePartyKpi(id, k)
   const concepts = usePartyConcepts(id, k)
-  const divisive = usePartyDivisive(id, k)
+  const [sp, setSp] = useSearchParams()
+  const splitOnly = sp.get("votes") === "split"
+  const page = usePage()
+  const votes = usePartyVotes(id, k, splitOnly, page)
   const bills = usePartyBills(id, k)
   const members = usePartyMembers(id, k)
   const navigate = useNavigate()
@@ -176,38 +183,47 @@ function PartyBody({ id, k }: { id: string; k: number | null }) {
       <BlurFade inView>
         <Card>
           <CardHeader>
-            <CardTitle>ההצבעות שבהן המפלגה התפצלה</CardTitle>
-            <CardDescription>הצבעות שבהן חברי המפלגה לא הצביעו כולם באותו כיוון (לכידות נמוכה ראשונה).</CardDescription>
+            <CardTitle>הצבעות</CardTitle>
+            <CardDescription>
+              {splitOnly
+                ? `הצבעות שבהן חברי המפלגה לא הצביעו כולם באותו כיוון ${knessetLabel(k)} (לכידות נמוכה ראשונה).`
+                : `כל ההצבעות שבהן הצביעו חברי המפלגה ${knessetLabel(k)}, מהחדשה לישנה: עמדת רוב המפלגה ואיך הצביעו חבריה.`}
+              {votes.data?.[0] && ` ${fmtVotes(votes.data[0].total)}.`}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <QueryState query={divisive} empty="המפלגה הצביעה תמיד כגוש אחד">
+          <CardContent className="flex flex-col gap-4">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={splitOnly ? "split" : "all"}
+              onValueChange={(v) =>
+                v &&
+                setSp((prev) => {
+                  if (v === "split") prev.set("votes", "split")
+                  else prev.delete("votes")
+                  prev.delete("page")
+                  return prev
+                }, { preventScrollReset: true })
+              }
+              aria-label="אילו הצבעות להציג"
+            >
+              <ToggleGroupItem value="all">כל ההצבעות</ToggleGroupItem>
+              <ToggleGroupItem value="split">רק שבהן התפצלה</ToggleGroupItem>
+            </ToggleGroup>
+            <QueryState
+              query={votes}
+              className="h-96"
+              empty={splitOnly ? "המפלגה הצביעה תמיד כגוש אחד" : `אין הצבעות ${knessetLabel(k)}`}
+            >
               {(rows) => (
-                <ShowMore
-                  items={rows}
-                  render={(r) => (
-                    <Item variant="outline" size="sm" asChild>
-                      <Link to={`/vote/${r.vote_id}`}>
-                        <ItemContent className="min-w-0">
-                          <ItemTitle className="line-clamp-2">{r.item_title}</ItemTitle>
-                          <ItemDescription className="flex flex-wrap items-center gap-2">
-                            <span className="tabular-nums">{fmtDate(r.vote_date)}</span>
-                            <StageBadge stage={r.stage} />
-                          </ItemDescription>
-                        </ItemContent>
-                        <ItemActions className="w-28">
-                          <SplitBar
-                            className="w-full"
-                            legend
-                            segments={[
-                              { key: "for", label: "בעד", value: r.n_for, color: CHOICE_COLOR.for },
-                              { key: "against", label: "נגד", value: r.n_against, color: CHOICE_COLOR.against },
-                            ]}
-                          />
-                        </ItemActions>
-                      </Link>
-                    </Item>
-                  )}
-                />
+                <>
+                  <ItemGroup className="gap-2">
+                    {rows.map((r) => (
+                      <PartyVoteLine key={r.vote_id} r={r} />
+                    ))}
+                  </ItemGroup>
+                  <Pager total={rows[0].total} pageSize={PAGE_SIZE} />
+                </>
               )}
             </QueryState>
           </CardContent>
@@ -292,5 +308,28 @@ function PartyBody({ id, k }: { id: string; k: number | null }) {
         </Card>
       </BlurFade>
     </>
+  )
+}
+
+// one vote: the party's majority position and its members' for / against / abstain split
+function PartyVoteLine({ r }: { r: NonNullable<ReturnType<typeof usePartyVotes>["data"]>[number] }) {
+  return (
+    <Item variant="outline" size="sm" asChild>
+      <Link to={`/vote/${r.vote_id}`}>
+        <ItemContent className="min-w-0">
+          <ItemTitle className="line-clamp-2">{r.item_title}</ItemTitle>
+          <ItemDescription className="flex flex-wrap items-center gap-2">
+            <span className="tabular-nums">{fmtDate(r.vote_date)}</span>
+            <StageBadge stage={r.stage} />
+            המפלגה {r.position === "split" ? <Badge variant="outline">חלוקה</Badge> : <ChoiceBadge choice={r.position} />}
+            {r.split && r.position !== "split" && <Badge variant="outline">התפצלה</Badge>}
+          </ItemDescription>
+        </ItemContent>
+        {/* own row below sm, otherwise it squeezes the title */}
+        <ItemActions className="w-36 max-sm:w-full max-sm:basis-full">
+          <SplitBar className="w-full" legend segments={tallySegments(r)} />
+        </ItemActions>
+      </Link>
+    </Item>
   )
 }

@@ -180,6 +180,10 @@ old_against = one("""WITH s AS (SELECT * FROM mk_service WHERE member_id = 771 A
     AND pv.position IN ('for','against') AND b.choice <> pv.position AND pv.n_for + pv.n_against >= 3""")
 assert kpi[0][2] == old_against, f"against_party changed: {kpi[0][2]} vs {old_against}"
 print("  MK 771 K25 against_party / agreement:", kpi[0][2], kpi[0][3])
+va = run("MK_VOTES_SQL", 771, 25, False, 0, expect_rows=True)
+vd = run("MK_VOTES_SQL", 771, 25, True, 0, expect_rows=True)
+assert va[0][-1] == kpi[0][0] and vd[0][-1] == kpi[0][2], f"MK 771 K25 vote list totals {va[0][-1]}/{vd[0][-1]} vs KPI {kpi[0][:3]}"
+print("  MK 771 K25 vote list all / against:", va[0][-1], vd[0][-1])
 print("  MK 206 K17 against_party / agreement:", run("MK_KPI_SQL", 206, 17, expect_rows=True)[0][2:4])
 
 # all Knessets (?k=all → None): sums match the per-Knesset values, members deduped
@@ -199,7 +203,10 @@ for mk in (206, 771):
     run("MK_SIMILAR_SQL", mk, None, mk, None, mk, False, expect_rows=True)
     run("MK_YEARLY_SQL", mk, None, expect_rows=True)
     run("MK_PARTICIPATION_SQL", mk, None, mk, expect_rows=True)
-    run("MK_AGAINST_PARTY_SQL", mk, None, expect_rows=True)
+    va = run("MK_VOTES_SQL", mk, None, False, 0, expect_rows=True)
+    vd = run("MK_VOTES_SQL", mk, None, True, 0, expect_rows=True)
+    assert va[0][-1] == allk[0] and vd[0][-1] == allk[2], f"MK {mk} vote list totals {va[0][-1]}/{vd[0][-1]} vs KPI {allk[0]}/{allk[2]}"
+    assert len(va) <= 50 and all(r[6] for r in vd), f"MK {mk} vote list paging / against flag"
     run("MK_BILLS_SQL", mk, None)
     mkc = run("MK_CONCEPTS_SQL", mk, None)
     if mkc:
@@ -212,7 +219,19 @@ assert pkpi[0] == n_likud, f"likud n_mks {pkpi[0]} vs {n_likud}"
 coal = run("PARTY_COALITION_SQL", "likud", None, expect_rows=True)
 assert len({r[0] for r in coal}) > 1, "likud coalition spans one Knesset"
 run("PARTY_CONCEPTS_SQL", "likud", None, expect_rows=True)
-run("PARTY_DIVISIVE_SQL", "likud", None, expect_rows=True)
+# party vote list: all = every party_vote row in scope, split = the divisive rule, least cohesive first
+for k in (25, None):
+    pa = run("PARTY_VOTES_SQL", "likud", k, False, False, 0, expect_rows=True)
+    pa2 = run("PARTY_VOTES_SQL", "likud", k, False, False, 50, expect_rows=True)
+    ps = run("PARTY_VOTES_SQL", "likud", k, True, True, 0, expect_rows=True)
+    scope = "FROM party_vote pv JOIN votes v USING (vote_id) WHERE pv.party_id = 'likud' AND pv.knesset_num = coalesce(?::INTEGER, pv.knesset_num)"
+    n_all = one(f"SELECT count(*) {scope}", k)
+    split_ids = [r[0] for r in con.execute(f"""SELECT vote_id {scope} AND pv.n_for + pv.n_against >= 3 AND pv.rice < 1
+        ORDER BY pv.rice, v.ts DESC, v.vote_id DESC""", [k]).fetchall()]
+    assert pa[0][-1] == n_all > ps[0][-1] == len(split_ids), f"likud k={k} vote list totals {pa[0][-1]}/{ps[0][-1]} vs {n_all}/{len(split_ids)}"
+    assert len(pa) == 50 and not {r[0] for r in pa} & {r[0] for r in pa2}, f"likud k={k} page cap / page overlap"
+    assert [r[0] for r in ps] == split_ids[:50] and all(r[8] for r in ps), f"likud k={k} split order / flag"
+    print(f"  likud k={k} vote list all / split: {pa[0][-1]} {ps[0][-1]}")
 run("PARTY_BILLS_SQL", None, "likud", expect_rows=True)
 print(f"  likud all Knessets: n_mks {pkpi[0]} participation {pkpi[1]:.4f} cohesion {pkpi[2]:.4f} "
       f"sided_with_coalition {pkpi[3]:.4f} | coalition Knessets {sorted({r[0] for r in coal})}")

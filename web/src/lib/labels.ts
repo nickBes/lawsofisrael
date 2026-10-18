@@ -85,6 +85,7 @@ export const SMALL_KNESSETS = [21, 22] // 16 and 86 votes only
 
 const num = new Intl.NumberFormat("he-IL")
 export const fmtNum = (n: number | null | undefined) => (n == null ? "—" : num.format(n))
+export const fmtVotes = (n: number) => (n === 1 ? "הצבעה אחת" : `${fmtNum(n)} הצבעות`)
 // Shares as whole percents for charts (the shadcn tooltip prints raw values).
 export const pct100 = (x: number | null) => (x == null ? null : Math.round(x * 100))
 export const pctTick = (v: unknown) => `${v}%`

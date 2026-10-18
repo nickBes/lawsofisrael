@@ -1,5 +1,6 @@
 import type { ConceptPieRow } from "@/components/concept-pies"
 import { useSql } from "@/db/useSql"
+import { PAGE_SIZE } from "@/pages/votes/queries"
 
 export const PARTY_SQL = /* sql */ `
 SELECT p.party_id, p.party_name, p.color_index, s.knesset_num
@@ -43,11 +44,16 @@ WHERE pv.party_id = ? AND pv.knesset_num = coalesce(?::INTEGER, pv.knesset_num) 
 GROUP BY ALL HAVING count(*) >= 5
 ORDER BY n_votes DESC, c.concept_label LIMIT 50`
 
-export const PARTY_DIVISIVE_SQL = /* sql */ `
-SELECT v.vote_id, v.vote_date::VARCHAR AS vote_date, v.item_title, s.stage, pv.n_for, pv.n_against, pv.rice
+// every vote the party's MKs cast a ballot in, paged; split = members not all the same way (>= 3 for/against, rice < 1).
+// third ? limits to split votes, fourth ? orders them least cohesive first
+export const PARTY_VOTES_SQL = /* sql */ `
+SELECT v.vote_id, v.vote_date::VARCHAR AS vote_date, v.item_title, s.stage, pv.position, pv.n_for, pv.n_against, pv.n_abstain,
+       pv.n_for + pv.n_against >= 3 AND pv.rice < 1 AS split,
+       count(*) OVER () AS total
 FROM party_vote pv JOIN votes v USING (vote_id) JOIN vote_stage s USING (vote_id)
-WHERE pv.party_id = ? AND pv.knesset_num = coalesce(?::INTEGER, pv.knesset_num) AND pv.n_for + pv.n_against >= 3 AND pv.rice < 1
-ORDER BY pv.rice, v.ts DESC LIMIT 20`
+WHERE pv.party_id = ? AND pv.knesset_num = coalesce(?::INTEGER, pv.knesset_num)
+  AND (NOT ? OR (pv.n_for + pv.n_against >= 3 AND pv.rice < 1))
+ORDER BY CASE WHEN ? THEN pv.rice END, v.ts DESC, v.vote_id DESC LIMIT 50 OFFSET ?`
 
 // bills initiated by the party's MKs (by their last party in this Knesset)
 export const PARTY_BILLS_SQL = /* sql */ `
@@ -79,9 +85,12 @@ export const usePartyKpi = (id: string, k: number | null) =>
     "partyKpi", PARTY_KPI_SQL, [k, id, id, k])
 export const usePartyConcepts = (id: string, k: number | null) =>
   useSql<ConceptPieRow>("partyConcepts", PARTY_CONCEPTS_SQL, [id, k])
-export const usePartyDivisive = (id: string, k: number | null) =>
-  useSql<{ vote_id: number; vote_date: string; item_title: string; stage: string; n_for: number; n_against: number; rice: number }>(
-    "partyDivisive", PARTY_DIVISIVE_SQL, [id, k])
+// LIMIT 50 in PARTY_VOTES_SQL must match PAGE_SIZE
+export const usePartyVotes = (id: string, k: number | null, splitOnly: boolean, page: number) =>
+  useSql<{
+    vote_id: number; vote_date: string; item_title: string; stage: string; position: string
+    n_for: number; n_against: number; n_abstain: number; split: boolean; total: number
+  }>("partyVotes", PARTY_VOTES_SQL, [id, k, splitOnly, splitOnly, (page - 1) * PAGE_SIZE], true, 2)
 export const usePartyBills = (id: string, k: number | null) =>
   useSql<{ bill_id: number; name: string; status: string; passed: boolean; last_vote_id: number | null }>("partyBills", PARTY_BILLS_SQL, [k, id])
 export const usePartyMembers = (id: string, k: number | null) =>

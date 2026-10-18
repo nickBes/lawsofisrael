@@ -1,5 +1,6 @@
 import type { ConceptPieRow } from "@/components/concept-pies"
 import { useSql } from "@/db/useSql"
+import { PAGE_SIZE } from "@/pages/votes/queries"
 
 export const MK_SERVICE_SQL = /* sql */ `
 SELECT m.member_name, s.knesset_num, s.first_date::VARCHAR AS first_date, s.last_date::VARCHAR AS last_date,
@@ -78,15 +79,18 @@ WHERE b.member_id = ? AND b.knesset_num = coalesce(?::INTEGER, b.knesset_num) AN
   AND s.stage IN ('preliminary','first','third')
 ORDER BY v.ts DESC LIMIT 200`
 
-// votes against own party (at least 2 other party members voted)
-export const MK_AGAINST_PARTY_SQL = /* sql */ `
-SELECT v.vote_id, v.vote_date::VARCHAR AS vote_date, v.item_title, s.stage, b.choice, pv.position
-FROM ballots_x b JOIN party_vote pv USING (vote_id, party_id)
-JOIN votes v USING (vote_id) JOIN vote_stage s USING (vote_id)
-WHERE b.member_id = ? AND b.knesset_num = coalesce(?::INTEGER, b.knesset_num) AND b.choice IN ('for','against')
-  AND pv.position IN ('for','against') AND b.choice <> pv.position
-  AND pv.n_for + pv.n_against >= 3
-ORDER BY v.ts DESC`
+// every ballot, paged; against_party = for/against opposite the party majority, at least 2 other party members voted
+// (same rule as against_party in MK_KPI_SQL); the third ? limits to those
+export const MK_VOTES_SQL = /* sql */ `
+SELECT v.vote_id, v.vote_date::VARCHAR AS vote_date, v.item_title, b.stage, b.choice, pv.position,
+       b.choice IN ('for','against') AND pv.position IN ('for','against') AND b.choice <> pv.position
+         AND pv.n_for + pv.n_against >= 3 AS against_party,
+       count(*) OVER () AS total
+FROM ballots_x b JOIN party_vote pv USING (vote_id, party_id) JOIN votes v USING (vote_id)
+WHERE b.member_id = ? AND b.knesset_num = coalesce(?::INTEGER, b.knesset_num)
+  AND (NOT ? OR (b.choice IN ('for','against') AND pv.position IN ('for','against') AND b.choice <> pv.position
+                 AND pv.n_for + pv.n_against >= 3))
+ORDER BY v.ts DESC, v.vote_id DESC LIMIT 50 OFFSET ?`
 
 // votes most like (optionally excluding strict coalition-vs-opposition votes)
 export const MK_SIMILAR_SQL = /* sql */ `
@@ -151,7 +155,9 @@ export const useMkConcepts = (id: number, k: number | null) =>
   useSql<ConceptPieRow>("mkConcepts", MK_CONCEPTS_SQL, [id, k])
 export const useMkConceptVotes = (id: number, k: number | null, concept: string) =>
   useSql<VoteLine & { bullet: string | null }>("mkConceptVotes", MK_CONCEPT_VOTES_SQL, [concept, id, k], concept !== "")
-export const useMkAgainstParty = (id: number, k: number | null) => useSql<VoteLine>("mkAgainstParty", MK_AGAINST_PARTY_SQL, [id, k])
+// LIMIT 50 in MK_VOTES_SQL must match PAGE_SIZE
+export const useMkVotes = (id: number, k: number | null, againstOnly: boolean, page: number) =>
+  useSql<VoteLine & { against_party: boolean; total: number }>("mkVotes", MK_VOTES_SQL, [id, k, againstOnly, (page - 1) * PAGE_SIZE], true, 2)
 export const useMkSimilar = (id: number, k: number | null, excludeBloc: boolean) =>
   useSql<{
     member_id: number

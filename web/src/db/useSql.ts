@@ -15,5 +15,13 @@ export async function runSql<T>(sql: string, params: unknown[] = []): Promise<T[
   }
 }
 
-export const useSql = <T>(name: string, sql: string, params: unknown[] = [], enabled = true) =>
-  useQuery({ queryKey: ["sql", name, ...params], queryFn: () => runSql<T>(sql, params), enabled })
+// keepIfSame = n: while new params load, keep showing the old rows if the first n params are unchanged
+// (e.g. same MK and Knesset, only mode/page changed), so the list doesn't collapse to a skeleton
+export const useSql = <T>(name: string, sql: string, params: unknown[] = [], enabled = true, keepIfSame = 0) =>
+  useQuery({
+    queryKey: ["sql", name, ...params],
+    queryFn: () => runSql<T>(sql, params),
+    enabled,
+    placeholderData: (prev, prevQuery) =>
+      keepIfSame && prevQuery?.queryKey.slice(2, 2 + keepIfSame).every((p, i) => p === params[i]) ? prev : undefined,
+  })
